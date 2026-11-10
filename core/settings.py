@@ -10,7 +10,7 @@ TEXT_COLOR = "#cbd5e1"
 CUBE_CORE = "#1b2433"
 
 # Шрифт с кириллицей (путь относительно папки с main.py)
-FONT_PATH = "assets/fonts/arial.ttf"
+FONT_PATH = "OpenSans-Regular.ttf"
 
 # Длительность поворота куба, секунд
 ROTATION_DURATION = 0.3

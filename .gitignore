@@ -34,3 +34,9 @@ dist/
 *.tmp
 .DS_Store
 Thumbs.db
+# Local assets and application data
+assetsfonts/
+data/spatial_trainer.db
+
+# Temporary scripts
+structure.py
