@@ -12,7 +12,9 @@ from logic.playlist import validate_plan
 # Для каждой настройки: допустимые значения (первое - по умолчанию не обязательно)
 OPTIONS = {
     "adaptive": (False, True),
-    "cube_skin": ("classic", "colorblind", "dice"),
+    "free_rotation": (False, True),     # вращать куб самому ещё до ответа (подсказка)
+    "cube_skin": ("classic", "colorblind", "dice", "neon", "pastel", "jewel"),
+    "daily_goal": (0, 10, 20, 30),      # заданий в день (0 - без цели)
     "face_marks": (False, True),
     "session_length": (5, 10, 15, 20),
     "mouse_sensitivity": ("low", "medium", "high"),
@@ -26,9 +28,11 @@ VALIDATORS = {
 
 DEFAULTS = {
     "adaptive": False,
+    "free_rotation": False,
     "custom_plan": {"modes": ["rotation", "projection"], "level": "easy", "per_mode": 3,
                     "order": "mixed", "adaptive": True},
     "cube_skin": "classic",
+    "daily_goal": 20,
     "face_marks": False,
     "session_length": 10,
     "mouse_sensitivity": "medium",

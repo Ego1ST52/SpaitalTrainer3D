@@ -14,11 +14,13 @@ from engine.backdrop import FloatingCubes
 from engine.nav_cube import mouse_position, NavCube, SIZE
 from engine.objects import dispose
 from interface.base_screen import BaseScreen
+from interface.achievements_screen import GOLD, goal_line
 from interface.code_dialog import CodeDialog
 from interface.ui_kit import (_draw_icon, Avatar, FRONT, label, LogoMark, mode_color,
                               mode_dim, Panel, PlayerChip, rounded_quad, Segmented, UIButton,
                               with_alpha)
 from logic.cube_nav import CubeNavigator, FACE_CONTENT
+from logic.goals import tasks_on
 
 LEVELS = [("easy", "Начальный"), ("medium", "Средний"), ("hard", "Продвинутый")]
 
@@ -132,16 +134,16 @@ class MainMenu(BaseScreen):
     def _build_hub(self, content):
         """Нижняя грань «Профиль»: игрок и кнопки статистики, настроек, игроков."""
         name, hex_color = self.player["name"], self.player["color"]
-        Avatar(name, hex_color, (0, 0.11, FRONT), size=0.07, parent=content)
-        label(name, (0, 0.05), 1.3, "strong", origin=(0, 0), parent=content)
+        Avatar(name, hex_color, (0, 0.125, FRONT), size=0.06, parent=content)
+        label(name, (0, 0.075), 1.2, "strong", origin=(0, 0), parent=content)
         total = summarize(self.history)["accuracy"] if self.history else None
         label(f"точность за всё время {total:.0f}%" if total is not None else "профиль игрока",
-              (0, 0.015), 0.8, "muted", origin=(0, 0), parent=content)
-        buttons = [("Статистика", "statistics"), ("Настройки", "settings"),
-                   ("Игроки", "profiles")]
+              (0, 0.043), 0.75, "muted", origin=(0, 0), parent=content)
+        buttons = [("Статистика", "statistics"), ("Достижения", "achievements"),
+                   ("Настройки", "settings"), ("Игроки", "profiles")]
         for i, (text, screen) in enumerate(buttons):
             button = UIButton(text, lambda s=screen: self._hub_action(s), parent=content,
-                              position=(0, -0.04 - i * 0.047, FRONT), scale=(0.25, 0.04),
+                              position=(0, 0.0 - i * 0.042, FRONT), scale=(0.25, 0.036),
                               text_size=0.8)
             button.face_name = "bottom"
             # Ursina считает размер текста кнопки для слоя интерфейса; на грани
@@ -164,6 +166,7 @@ class MainMenu(BaseScreen):
         self.own(PlayerChip(self.player["name"], self.player["color"],
                             lambda: self.navigate("profiles"),
                             position=(right - 0.16, 0.42)))
+        self._build_goal(right - 0.31)
 
         # Стрелки вокруг куба (символ › повёрнут в нужную сторону)
         for direction, position, angle in (("left", (-0.34, 0.04), 180),
@@ -185,6 +188,22 @@ class MainMenu(BaseScreen):
                           scale=(0.14, 0.05), text_size=0.8))
         self.own(UIButton("Выход", application.quit, variant="ghost",
                           position=(right - 0.06, -0.445), scale=(0.11, 0.05), text_size=0.8))
+
+    def _build_goal(self, left):
+        """Цель дня под плашкой игрока: полоска и серия дней."""
+        from datetime import date
+        goal = prefs.get("daily_goal")
+        width = 0.3
+        self.own(label(goal_line(self.history, goal), (left, 0.355), 0.7, GOLD))
+        self.own(Entity(parent=camera.ui, model="quad", shader=unlit_shader,
+                        origin=(-0.5, 0), position=(left, 0.33, FRONT), scale=(width, 0.006),
+                        color=color.hex(settings.BORDER)))
+        if goal:
+            share = min(1, tasks_on(self.history, date.today()) / goal)
+            if share > 0:
+                self.own(Entity(parent=camera.ui, model="quad", shader=unlit_shader,
+                                origin=(-0.5, 0), position=(left, 0.33, FRONT * 1.5),
+                                scale=(width * share, 0.006), color=color.hex(GOLD)))
 
     def _build_net(self):
         """Развёртка куба в углу: где вы сейчас; клик по клетке - туда."""
@@ -227,7 +246,7 @@ class MainMenu(BaseScreen):
             button.model.setColorScale(button.color)
 
         if kind == "hub":
-            self.hint.text = "статистика, настройки и игроки - кнопки прямо на грани"
+            self.hint.text = "статистика, достижения, настройки и игроки - кнопки на грани"
         elif kind == "custom":
             self.hint.text = "Enter или клик по грани - собрать свою тренировку"
         else:

@@ -3,6 +3,7 @@ from ursina.shaders import unlit_shader
 
 from core import settings
 from engine.backdrop import FloatingCubes
+from interface.achievements_screen import AchievementToast
 from interface.base_screen import BaseScreen
 from interface.ui_kit import FRONT, label, mode_color, Panel, StatTile, UIButton
 from logic.session import format_duration
@@ -12,8 +13,10 @@ class CustomResultsScreen(BaseScreen):
     """Итоги «Моей тренировки»: общие показатели и разбивка по режимам.
     saved=False, если результат не удалось сохранить."""
 
-    def __init__(self, manager, playlist, saved=True):
+    def __init__(self, manager, playlist, saved=True, achievements=()):
         super().__init__(manager)
+        if achievements:          # новые достижения за эту тренировку
+            self.own(AchievementToast(achievements))
         accent = mode_color("custom")
         self.own(FloatingCubes())
 

@@ -86,6 +86,9 @@ class ColoredCube(Entity):
         return True
 
     def _finish_rotation(self, pivot, axis, visual_angle, on_done):
+        # Экран могли закрыть, пока шла анимация: тогда куб уже удалён
+        if self.is_empty() or pivot.is_empty():
+            return
         # Ставим точный конечный угол: если кадр «подвис», анимация могла
         # не успеть дойти до конца, и куб остался бы повёрнутым не до конца.
         setattr(pivot, f"rotation_{axis}", visual_angle)
@@ -187,6 +190,29 @@ class ShadedBlock(Entity):
         for face in self.faces:
             face.color = color.rgba(base.r * face.light, base.g * face.light,
                                     base.b * face.light, 1)
+
+
+class AxisGizmo(Entity):
+    """Оси координат X, Y, Z стрелками с подписями: видно, вокруг какой оси
+    поворачивается куб. Цвета как принято в 3D: X - красная, Y - зелёная,
+    Z - синяя. Ось Z в Ursina направлена от зрителя, вглубь экрана."""
+
+    AXES = {"X": (Vec3(1, 0, 0), "#ef4444"), "Y": (Vec3(0, 1, 0), "#22c55e"),
+            "Z": (Vec3(0, 0, 1), "#3b82f6")}
+
+    def __init__(self, length=0.9, **kwargs):
+        super().__init__(**kwargs)
+        for name, (direction, hex_color) in self.AXES.items():
+            tint = color.hex(hex_color)
+            Entity(parent=self, model=Mesh(vertices=[Vec3(0, 0, 0), direction * length],
+                                           mode="line", thickness=3),
+                   color=tint, shader=unlit_shader)
+            Entity(parent=self, model="sphere", scale=0.07, position=direction * length,
+                   color=tint, shader=unlit_shader)
+            Text(name, parent=self, position=direction * (length + 0.22), billboard=True,
+                 origin=(0, 0), scale=12, color=tint)
+        Entity(parent=self, model="sphere", scale=0.06, color=color.hex("#cbd5e1"),
+               shader=unlit_shader)
 
 
 def dispose(entity):

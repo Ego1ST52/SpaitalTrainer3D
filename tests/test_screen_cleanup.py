@@ -7,6 +7,7 @@ Ursina запускается без окна (offscreen). После перех
 import pytest
 
 ursina = pytest.importorskip("ursina")
+from ursina import Text, scene  # noqa: E402
 
 
 @pytest.fixture
@@ -53,6 +54,7 @@ def manager(app):
     from interface.custom_screen import CustomTrainingScreen
     from interface.custom_results_screen import CustomResultsScreen
     from core.preferences import DEFAULTS
+    from interface.achievements_screen import AchievementsScreen
 
     m = SceneManager()
     m.register("menu", lambda: MainMenu(m))
@@ -70,6 +72,7 @@ def manager(app):
     m.register("custom", lambda: CustomTrainingScreen(m, DEFAULTS["custom_plan"],
                                                       lambda plan: None))
     m.register("custom_results", lambda: CustomResultsScreen(m, _finished_playlist()))
+    m.register("achievements", lambda: AchievementsScreen(m, HISTORY, 20, lambda goal: None))
     m.go("menu")
     app.step()
     yield m
@@ -78,7 +81,8 @@ def manager(app):
 
 
 @pytest.mark.parametrize("screen", ["progress", "statistics", "rotation", "matching", "projection", "construction",
-                                    "settings", "profiles", "custom", "custom_results"])
+                                    "settings", "profiles", "custom", "custom_results",
+                                    "achievements"])
 def test_screen_leaves_nothing_behind(app, manager, screen):
     before = count_entities()
     manager.go(screen)
@@ -339,3 +343,91 @@ def test_hub_buttons_work_only_when_hub_is_in_front(app, manager):
     menu.go_to("bottom")
     menu._hub_action("settings")
     assert calls == [("settings", {})]
+
+
+def test_rotation_manual_turns_only_after_answer(app, manager):
+    """Самому крутить куб можно после ответа (до ответа - только с подсказкой
+    в настройках). Направления: «вправо» уводит переднюю грань вправо."""
+    import time
+    from core.preferences import prefs
+    from logic.rotations import face_direction
+
+    def settle(screen):
+        deadline = time.time() + 2
+        while screen.cube.busy and time.time() < deadline:
+            app.step()
+
+    manager.go("rotation")
+    app.step()
+    screen = manager._current
+    assert not screen.manual_turn("y", -1)             # до ответа нельзя
+    assert "после ответа" in screen.manual_title.text
+
+    screen.choose(0)
+    assert screen.manual_turn("y", -1)                 # «вправо» вокруг Y
+    settle(screen)
+    assert face_direction(screen.cube.orientation, "-Z") == "+X"
+    assert screen.manual_turn("x", 1)                  # «вверх» вокруг X
+    settle(screen)
+    assert screen.manual_log.text.endswith("Y-  X+")
+    screen.manual_reset()
+    assert screen.cube.orientation == ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+
+    prefs.set("free_rotation", True)
+    try:
+        screen.next_task()
+        assert screen.manual_turn("z", 1)              # подсказка: можно и до ответа
+        settle(screen)
+    finally:
+        prefs.load({})
+        manager.go("menu")
+        app.step()
+
+
+def test_leaving_during_manual_turn_does_not_crash(app, manager):
+    """Ушли с экрана, пока куб ещё поворачивается - конец анимации не должен
+    обращаться к уже удалённому кубу."""
+    import time
+    manager.go("rotation")
+    app.step()
+    screen = manager._current
+    screen.choose(0)
+    assert screen.manual_turn("x", 1)
+    manager.go("menu")                                 # ушли посреди поворота
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        app.step()                                     # таймер окончания поворота сработает
+
+
+def test_locked_skin_cannot_be_picked(app, manager):
+    from core.preferences import prefs
+    from interface.settings_screen import SettingsScreen
+
+    saved = []
+    screen = SettingsScreen(manager, "Тест", lambda key, value: saved.append((key, value)),
+                            unlocked_skins={"pastel"})
+    try:
+        screen.pick_skin("neon")                       # «Неон» закрыт
+        assert not saved and "Без ошибок" in screen.skin_hint.text
+        screen.pick_skin("pastel")                     # открыт - выбирается
+        assert saved == [("cube_skin", "pastel")]
+    finally:
+        screen.close()
+        prefs.load({})
+
+
+def test_results_show_new_achievements(app, manager):
+    from interface.results_screen import ResultsScreen
+    from logic.achievements import BY_KEY
+    from logic.session import TrainingSession
+
+    session = TrainingSession("rotation", "easy", 5)
+    for _ in range(5):
+        session.record(True, 3)
+    screen = ResultsScreen(manager, session, True, [BY_KEY["flawless"]])
+    try:
+        texts = [e.text for e in scene.entities if isinstance(e, Text) and e.enabled]
+        assert "Новое достижение!" in texts and "Без ошибок" in texts
+        assert any("Неон" in t for t in texts)
+    finally:
+        screen.close()

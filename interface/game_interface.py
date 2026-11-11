@@ -4,7 +4,7 @@ from ursina import *
 from ursina.shaders import unlit_shader
 
 from core import settings
-from engine.objects import ColoredCube, dispose
+from engine.objects import AxisGizmo, ColoredCube, dispose
 from interface.base_screen import BaseScreen
 from interface.ui_kit import label, Panel, TopBar, UIButton
 from core.preferences import prefs
@@ -56,6 +56,10 @@ class RotationGameScreen(BaseScreen):
         self.own(make_floor())
         self.cube = self.own(ColoredCube(skin=self.skin, marks=prefs.get("face_marks"),
                                          scale=1.6))   # в центре: вокруг него вращается камера
+        # Оси рядом с кубом: видно, что значит «вокруг оси X»
+        self.own(AxisGizmo(position=(-2.5, -0.84, 0.4)))
+        self.manual_moves = []     # повороты, которые игрок сделал сам
+        self.drag_start = None
 
         self.top_bar = self.own(TopBar("rotation", self.go_back))
 
@@ -64,6 +68,7 @@ class RotationGameScreen(BaseScreen):
         self.own(label(start_description(self.skin), (left, 0.295), 1.0))
         self.own(label("Правая кнопка мыши - осмотреть куб, колесо - приблизить",
                        (left, -0.455), 0.8, "muted"))
+        self._build_manual_controls(left)
 
         self.own(Panel(PANEL_WIDTH, 0.78, position=(PANEL_X, -0.06)))
         self.own(label("Повороты по порядку", (PANEL_LEFT, 0.29), 0.8, "muted"))
@@ -98,6 +103,7 @@ class RotationGameScreen(BaseScreen):
         self.answered = False
         self.task_started = perf_counter()
         self.cube.reset()
+        self.manual_moves = []
         self.next_button.text = "Дальше"
         self._clear_task_objects()
 
@@ -119,8 +125,8 @@ class RotationGameScreen(BaseScreen):
         self._update_status()
 
     def next_task(self):
-        if self.playing or not self.answered:
-            return
+        if self.playing or self.cube.busy or not self.answered:
+            return              # ждём, пока куб закончит поворот
         if self.session.is_finished:
             finish_training(self)
         else:
@@ -148,8 +154,55 @@ class RotationGameScreen(BaseScreen):
             self.next_button.text = finish_label(self)
         self._update_status()
 
+    # ---------- ручное вращение куба ----------
+    def _build_manual_controls(self, left):
+        """Кнопки «X+ X- Y+ Y- Z+ Z-» и «Сброс»: игрок сам крутит куб.
+        Клавиши X, Y, Z (с Shift - обратно), R - сброс; можно и тянуть мышью."""
+        self.manual_title = self.own(label("", (left, -0.3), 0.8, "muted"))
+        self.manual_log = self.own(label("", (left, -0.405), 0.8, "accent"))
+        x = left + 0.03
+        for axis in "xyz":
+            for sign in (1, -1):
+                text = f"{axis.upper()}{'+' if sign > 0 else '-'}"
+                self.own(UIButton(text, lambda a=axis, s=sign: self.manual_turn(a, s),
+                                  position=(x, -0.35), scale=(0.055, 0.045), text_size=0.75))
+                x += 0.06
+        self.own(UIButton("Сброс", self.manual_reset, position=(x + 0.03, -0.35),
+                          scale=(0.1, 0.045), text_size=0.75, variant="ghost"))
+
+    def can_rotate_manually(self):
+        """До ответа крутить нельзя (иначе ответ можно просто подсмотреть),
+        если в настройках не включена подсказка «вращать куб до ответа»."""
+        allowed = self.answered or prefs.get("free_rotation")
+        return allowed and not self.playing and not self.cube.busy
+
+    def manual_turn(self, axis, sign):
+        if not self.can_rotate_manually():
+            return False
+        self.cube.rotate_world(axis, 90 * sign)
+        self.manual_moves.append(f"{axis.upper()}{'+' if sign > 0 else '-'}")
+        self._update_manual_text()
+        return True
+
+    def manual_reset(self):
+        if not self.can_rotate_manually():
+            return
+        self.cube.reset()
+        self.manual_moves = []
+        self._update_manual_text()
+
+    def _update_manual_text(self):
+        if self.can_rotate_manually() or self.manual_moves:
+            self.manual_title.text = ("Покрутите куб сами: X, Y, Z (Shift - обратно), "
+                                      "мышь - перетащить, R - сброс")
+        else:
+            self.manual_title.text = "Покрутить куб самому можно после ответа"
+        moves = "  ".join(self.manual_moves[-8:])
+        self.manual_log.text = f"Ваши повороты:  {moves}" if moves else ""
+
     def _update_status(self):
         self.top_bar.update_state(self.session, self.answered)
+        self._update_manual_text()
 
     # ---------- решение ----------
     def show_solution(self):
@@ -162,6 +215,8 @@ class RotationGameScreen(BaseScreen):
 
     def _solution_done(self):
         self.playing = False
+        self.manual_moves = []          # после решения куб в итоговом положении задания
+        self._update_manual_text()
 
     # ---------- выход ----------
     def go_back(self):
@@ -175,6 +230,25 @@ class RotationGameScreen(BaseScreen):
 
     # ---------- клавиши ----------
     def input(self, key):
-        if key in LEVEL_KEYS and not self.playing and not self.session.locked:
+        if key in LEVEL_KEYS and not self.playing and not self.cube.busy                 and not self.session.locked:
             self._start(LEVEL_KEYS[key])  # заново, с новым кодом
             self.new_task()
+        elif key in ("x", "y", "z"):
+            self.manual_turn(key, -1 if held_keys["shift"] else 1)
+        elif key == "r":
+            self.manual_reset()
+        elif key == "left mouse down":
+            # тянуть можно, только если нажали не на кнопку интерфейса
+            hovered = mouse.hovered_entity
+            self.drag_start = None if isinstance(hovered, Button) else Vec2(mouse.x, mouse.y)
+        elif key == "left mouse up" and self.drag_start is not None:
+            delta = Vec2(mouse.x, mouse.y) - self.drag_start
+            self.drag_start = None
+            if max(abs(delta.x), abs(delta.y)) < 0.05:
+                return
+            # Потянули вправо - передняя грань уходит вправо (поворот вокруг Y),
+            # вверх - передняя грань уходит вверх (поворот вокруг X)
+            if abs(delta.x) > abs(delta.y):
+                self.manual_turn("y", -1 if delta.x > 0 else 1)
+            else:
+                self.manual_turn("x", 1 if delta.y > 0 else -1)

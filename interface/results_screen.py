@@ -2,6 +2,7 @@ from ursina import *
 from ursina.shaders import unlit_shader
 
 from core import settings
+from interface.achievements_screen import AchievementToast
 from interface.base_screen import BaseScreen
 from engine.backdrop import FloatingCubes
 from interface.ui_kit import FRONT, label, mode_color, StatTile, UIButton
@@ -11,8 +12,10 @@ from logic.session import format_duration
 class ResultsScreen(BaseScreen):
     """Итоги тренировки. saved=False, если результат не удалось сохранить."""
 
-    def __init__(self, manager, session, saved=True):
+    def __init__(self, manager, session, saved=True, achievements=()):
         super().__init__(manager)
+        if achievements:          # новые достижения за эту тренировку
+            self.own(AchievementToast(achievements))
         s = session
         accent = mode_color(s.mode)
         self.own(FloatingCubes())

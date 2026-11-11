@@ -23,6 +23,8 @@ from interface.settings_screen import SettingsScreen
 from interface.profiles_screen import ProfilesScreen
 from interface.custom_screen import CustomTrainingScreen
 from interface.custom_results_screen import CustomResultsScreen
+from interface.achievements_screen import AchievementsScreen
+from logic.achievements import newly_unlocked, unlocked_skins
 
 app = Ursina(title=settings.WINDOW_TITLE, borderless=False)
 window.color = color.hex(settings.BACKGROUND)
@@ -141,7 +143,30 @@ def open_menu():
 
 def open_settings():
     menu_view()
-    return SettingsScreen(manager, player["name"], save_preference)
+    return SettingsScreen(manager, player["name"], save_preference,
+                          unlocked_skins(load_history() or [], prefs.get("daily_goal")))
+
+
+def open_achievements():
+    menu_view()
+    return AchievementsScreen(manager, load_history(), prefs.get("daily_goal"),
+                              lambda goal: save_preference("daily_goal", goal))
+
+
+def save_and_check_achievements(sessions):
+    """Сохранить тренировки и узнать, какие достижения получены благодаря им.
+    Возвращает (сохранено ли, [новые достижения])."""
+    if db is None or player["id"] is None:
+        return False, []
+    before = load_history() or []
+    try:
+        for session in sessions:
+            db.save_session(player["id"], session)
+    except (sqlite3.Error, ValueError) as error:
+        print("Не удалось сохранить результат:", error)
+        return False, []
+    after = load_history() or []
+    return True, newly_unlocked(before, after, prefs.get("daily_goal"))
 
 
 def open_profiles():
@@ -184,28 +209,15 @@ def open_custom():
 def open_custom_results(playlist):
     """Итоги «Моей тренировки». В базу пишем по одной записи на режим, чтобы
     статистика и прогресс по режимам оставались честными."""
-    saved = False
-    if db is not None and player["id"] is not None:
-        try:
-            for session in playlist.merged_by_mode():
-                db.save_session(player["id"], session)
-            saved = True
-        except (sqlite3.Error, ValueError) as error:
-            print("Не удалось сохранить результат:", error)
+    saved, achievements = save_and_check_achievements(playlist.merged_by_mode())
     menu_view()
-    return CustomResultsScreen(manager, playlist, saved)
+    return CustomResultsScreen(manager, playlist, saved, achievements)
 
 
 def open_results(session):
-    saved = False
-    if db is not None and player["id"] is not None:
-        try:
-            db.save_session(player["id"], session)
-            saved = True
-        except (sqlite3.Error, ValueError) as error:
-            print("Не удалось сохранить результат:", error)
+    saved, achievements = save_and_check_achievements([session])
     menu_view()
-    return ResultsScreen(manager, session, saved)
+    return ResultsScreen(manager, session, saved, achievements)
 
 
 def open_statistics():
@@ -220,6 +232,7 @@ def open_progress():
 
 manager.register("menu", open_menu)
 manager.register("settings", open_settings)
+manager.register("achievements", open_achievements)
 manager.register("profiles", open_profiles)
 manager.register("rotation", open_rotation)
 manager.register("matching", open_matching)
