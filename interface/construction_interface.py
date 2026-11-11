@@ -10,9 +10,8 @@ from interface.base_screen import BaseScreen
 from interface.ui_kit import label, mode_color, Panel, TopBar, UIButton
 from logic.construction import Build, ConstructionTaskGenerator, GRID_HALF, \
     build_hint, check_build
-from logic.session import TrainingSession
+from interface.game_common import LEVEL_KEYS, new_training
 
-LEVEL_KEYS = {"1": "easy", "2": "medium", "3": "hard"}
 
 PANEL_X = 0.62
 PANEL_WIDTH = 0.44
@@ -25,11 +24,10 @@ class ConstructionGameScreen(BaseScreen):
     """Режим 4: собрать из кубиков фигуру по образцу.
     Клик - поставить кубик, Shift+клик - убрать, Ctrl+Z - отменить."""
 
-    def __init__(self, manager, level="easy"):
+    def __init__(self, manager, level="easy", seed=None, locked=False):
         super().__init__(manager)
         self.accent = mode_color("construction")
-        self.generator = ConstructionTaskGenerator()
-        self.session = self._new_session(level)
+        self._start(level, seed, locked)
         self.task = None
         self.build = None
         self.blocks = {}            # клетка -> 3D-кубик
@@ -52,8 +50,7 @@ class ConstructionGameScreen(BaseScreen):
                                                       grid_color.b, 0.35),
                                      shader=unlit_shader))
 
-        self.top_bar = self.own(TopBar("construction", self.go_back,
-                                       settings.CONSTRUCTION_LENGTH))
+        self.top_bar = self.own(TopBar("construction", self.go_back))
         self.own(Panel(PANEL_WIDTH, 0.78, position=(PANEL_X, -0.06)))
         self.own(label("Образец", (PANEL_LEFT, 0.29), 0.8, "muted"))
         self.question = self.own(label("", (PANEL_LEFT, 0.005), 0.95, "strong"))
@@ -74,8 +71,10 @@ class ConstructionGameScreen(BaseScreen):
                        (window.top_left.x + 0.05, -0.455), 0.75, "muted"))
         self.new_task()
 
-    def _new_session(self, level):
-        return TrainingSession("construction", level, settings.CONSTRUCTION_LENGTH)
+    def _start(self, level, seed=None, locked=False):
+        """Новая тренировка: свой код и генератор заданий с этим зерном."""
+        self.session, seed = new_training("construction", level, seed, locked)
+        self.generator = ConstructionTaskGenerator(seed=seed)
 
     # ---------- задания ----------
     def new_task(self):
@@ -103,8 +102,7 @@ class ConstructionGameScreen(BaseScreen):
     def _refresh(self):
         self.counter.text = (f"Поставлено: {len(self.build.cells)} из "
                              f"{len(self.task.target)}  (можно до {self.build.max_cubes})")
-        s = self.session
-        self.top_bar.update_state(s.level, s.results, self.answered, s.points)
+        self.top_bar.update_state(self.session, self.answered)
 
     # ---------- кубики ----------
     def _sync_blocks(self):
@@ -155,8 +153,8 @@ class ConstructionGameScreen(BaseScreen):
             self.preview.rotation_y += 25 * time.dt
 
     def input(self, key):
-        if key in LEVEL_KEYS:
-            self.session = self._new_session(LEVEL_KEYS[key])  # заново
+        if key in LEVEL_KEYS and not self.session.locked:
+            self._start(LEVEL_KEYS[key])  # заново, с новым кодом
             self.new_task()
         elif key == "z" and held_keys["control"]:     # Ctrl+Z
             self.undo()

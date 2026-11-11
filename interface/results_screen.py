@@ -46,9 +46,15 @@ class ResultsScreen(BaseScreen):
         self.own(UIButton("В меню", lambda: self.navigate("menu"),
                           position=(0.13, -0.26), scale=(0.24, 0.065)))
 
+        if s.code:
+            caption = ("Тренировка по коду" if s.locked else "Код этой тренировки")
+            self.own(label(f"{caption}:  {s.code}", (0, -0.335), 1.0, accent, origin=(0, 0)))
+            self.own(label("Друг, введя его в меню («По коду»), получит те же задания",
+                           (0, -0.37), 0.75, "muted", origin=(0, 0)))
+
         if not saved:
             self.own(label("Не удалось сохранить результат в базу данных.",
-                           (0, -0.35), 0.95, "wrong", origin=(0, 0)))
+                           (0, -0.405), 0.9, "wrong", origin=(0, 0)))
 
         self.own(label("Баллы отражают результат в этой игре и не являются "
                        "измерением когнитивных способностей.",

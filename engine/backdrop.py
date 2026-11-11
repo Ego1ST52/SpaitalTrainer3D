@@ -8,6 +8,7 @@ from ursina import *
 from ursina.shaders import unlit_shader
 
 from core import settings
+from core.preferences import prefs
 
 
 def _hex_to_rgb(value):
@@ -57,6 +58,8 @@ class FloatingCubes(Entity):
 
     def __init__(self, count=9, seed=4):
         super().__init__()
+        if prefs.reduce_motion:
+            count = 0          # «меньше движения»: фон без плавающих кубов
         rng = random.Random(seed)
         mesh = wire_cube_mesh()
         accent = color.hex(settings.ACCENT)

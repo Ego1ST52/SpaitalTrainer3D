@@ -13,6 +13,7 @@ from ursina import *
 from ursina.shaders import unlit_shader
 
 from core import settings
+from core.preferences import prefs
 
 TONES = {
     "text": settings.TEXT_COLOR,
@@ -176,7 +177,8 @@ class ModeCard(Entity):
                  width=0.62, height=0.105, appear_delay=0.0, parent=None):
         super().__init__(parent=parent or camera.ui, position=position)
         self.home_x = position[0]
-        self.x = self.home_x - 0.06              # старт чуть левее - «выезд»
+        if not prefs.reduce_motion:
+            self.x = self.home_x - 0.06          # старт чуть левее - «выезд»
         self.appear_at = time.time() + appear_delay
         self.accent = color.hex(mode_color(mode))
         radius = 0.02
@@ -251,11 +253,10 @@ class TopBar(Entity):
     """Верхняя панель игрового экрана: режим и уровень слева, полоска
     прогресса по центру, баллы и кнопка «В меню» справа."""
 
-    def __init__(self, mode, on_back, length, parent=None):
+    def __init__(self, mode, on_back, parent=None):
         super().__init__(parent=parent or camera.ui)
         left = window.top_left.x + 0.05
         right = window.top_right.x - 0.05
-        self.length = length
         self.accent = mode_color(mode)
 
         Entity(parent=self, model=rounded_quad(0.006, 0.05, 0.003), scale=(0.006, 0.05),
@@ -273,19 +274,22 @@ class TopBar(Entity):
         UIButton("В меню", on_back, position=(right - 0.09, 0.43),
                  scale=(0.18, 0.055), variant="ghost", parent=self)
 
-    def update_state(self, level, results, answered, points):
-        """results - список TaskResult. answered - ответ на текущее уже дан."""
-        self.level_text.text = (f"{settings.LEVEL_NAMES[level]} уровень  •  "
-                                "сменить: клавиши 1, 2, 3")
+    def update_state(self, session, answered):
+        """session - текущая тренировка, answered - ответ на задание уже дан."""
+        hint = (f"тренировка по коду {session.code}" if session.locked
+                else "сменить: клавиши 1, 2, 3")
+        self.level_text.text = f"{settings.LEVEL_NAMES[session.level]} уровень  •  {hint}"
+        results, length = session.results, session.length
         number = len(results) if answered else len(results) + 1
-        self.progress_text.text = f"Задание {min(number, self.length)} из {self.length}"
-        self.points_text.text = str(points)
+        self.progress_text.text = f"Задание {min(number, length)} из {length}"
+        self.points_text.text = str(session.points)
 
         for child in list(self.segments_holder.children):
             destroy(child)
-        width, gap = 0.5, 0.006
-        segment = (width - gap * (self.length - 1)) / self.length
-        for i in range(self.length):
+        width = 0.5
+        gap = 0.006 if length <= 10 else 0.003
+        segment = (width - gap * (length - 1)) / length
+        for i in range(length):
             if i < len(results):
                 hex_color = settings.CORRECT_COLOR if results[i].correct else settings.WRONG_COLOR
             elif i == len(results):
@@ -295,6 +299,32 @@ class TopBar(Entity):
             Entity(parent=self.segments_holder, model="quad", shader=unlit_shader,
                    position=(-width / 2 + segment / 2 + i * (segment + gap), 0, FRONT),
                    scale=(segment, 0.008), color=color.hex(hex_color))
+
+
+class Avatar(Entity):
+    """Кружок цвета игрока с первой буквой имени."""
+
+    def __init__(self, name, hex_color, position, size=0.05, parent=None):
+        super().__init__(parent=parent or camera.ui, position=position)
+        # model="circle", а не Circle(...): Circle() в Ursina при каждом вызове
+        # оставляет за собой лишний служебный объект (найдено тестом утечек)
+        Entity(parent=self, model="circle", scale=size, color=color.hex(hex_color),
+               shader=unlit_shader, z=FRONT / 2)
+        label(name[:1].upper(), (0, 0.001), size * 22, "#0b1220", origin=(0, 0), parent=self)
+
+
+class PlayerChip(Entity):
+    """Плашка текущего игрока (аватар, имя). Клик - сменить игрока."""
+
+    def __init__(self, name, hex_color, on_click, position, width=0.3, height=0.07,
+                 parent=None):
+        super().__init__(parent=parent or camera.ui, position=position)
+        UIButton("", on_click, scale=(width, height), variant="ghost", parent=self,
+                 radius=0.4)
+        left = -width / 2 + 0.04
+        Avatar(name, hex_color, (left, 0, FRONT), size=0.045, parent=self)
+        label(name, (left + 0.04, 0.012), 0.9, "strong", parent=self)
+        label("сменить игрока  ›", (left + 0.04, -0.016), 0.7, "muted", parent=self)
 
 
 class StatTile(Entity):

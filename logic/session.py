@@ -19,12 +19,14 @@ def format_duration(seconds):
 
 
 class TrainingSession:
-    def __init__(self, mode, level, length=10):
+    def __init__(self, mode, level, length=10, code=None, locked=False):
         if length < 1:
             raise ValueError("В тренировке должно быть хотя бы одно задание")
         self.mode = mode
         self.level = level
         self.length = length
+        self.code = code        # код тренировки (см. logic/training_code.py)
+        self.locked = locked    # True - тренировка по чужому коду
         self.results = []
 
     def record(self, correct, seconds):

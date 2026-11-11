@@ -10,9 +10,8 @@ from interface.layout3d import ui_to_world, fit_scale
 from interface.ui_kit import label, TopBar, UIButton
 from logic.matching_tasks import MatchingTaskGenerator
 from logic.answer_checker import check_answer
-from logic.session import TrainingSession
+from interface.game_common import LEVEL_KEYS, new_training
 
-LEVEL_KEYS = {"1": "easy", "2": "medium", "3": "hard"}
 LETTERS = "АБВГД"
 
 OPTION_SPACING_UI = 0.28     # расстояние между вариантами на экране
@@ -26,10 +25,9 @@ class MatchingGameScreen(BaseScreen):
     """Игровой экран режима 2: найти фигуру, совпадающую с образцом.
     Ответить можно кнопкой с буквой или кликом по самой фигуре."""
 
-    def __init__(self, manager, level="easy"):
+    def __init__(self, manager, level="easy", seed=None, locked=False):
         super().__init__(manager)
-        self.generator = MatchingTaskGenerator()
-        self.session = self._new_session(level)
+        self._start(level, seed, locked)
         self.rotator = SyncRotator()
         self.task = None
         self.task_started = 0.0
@@ -39,7 +37,7 @@ class MatchingGameScreen(BaseScreen):
         self.option_views = []
         self.option_buttons = []
 
-        self.top_bar = self.own(TopBar("matching", self.go_back, settings.SESSION_LENGTH))
+        self.top_bar = self.own(TopBar("matching", self.go_back))
         self.own(label("Какая из фигур совпадает с образцом после поворота?",
                        (0, 0.345), 1.05, "strong", origin=(0, 0)))
         self.own(label("Образец", (0, 0.3), 0.8, "muted", origin=(0, 0)))
@@ -53,8 +51,10 @@ class MatchingGameScreen(BaseScreen):
                                              scale=(0.2, 0.06), variant="primary"))
         self.new_task()
 
-    def _new_session(self, level):
-        return TrainingSession("matching", level, settings.SESSION_LENGTH)
+    def _start(self, level, seed=None, locked=False):
+        """Новая тренировка: свой код и генератор заданий с этим зерном."""
+        self.session, seed = new_training("matching", level, seed, locked)
+        self.generator = MatchingTaskGenerator(seed=seed)
 
     def _clear_task_objects(self):
         for obj in self.task_objects + self.option_buttons:
@@ -130,8 +130,7 @@ class MatchingGameScreen(BaseScreen):
         self._update_status()
 
     def _update_status(self):
-        s = self.session
-        self.top_bar.update_state(s.level, s.results, self.answered, s.points)
+        self.top_bar.update_state(self.session, self.answered)
 
     def _option_under_mouse(self):
         """Номер варианта, над которым курсор, или None."""
@@ -158,8 +157,8 @@ class MatchingGameScreen(BaseScreen):
         super().close()
 
     def input(self, key):
-        if key in LEVEL_KEYS:
-            self.session = self._new_session(LEVEL_KEYS[key])  # заново
+        if key in LEVEL_KEYS and not self.session.locked:
+            self._start(LEVEL_KEYS[key])  # заново, с новым кодом
             self.new_task()
         elif key == "r":
             self.rotator.reset()

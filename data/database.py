@@ -1,5 +1,6 @@
 """Хранение результатов в SQLite. Без Ursina."""
 
+import json
 import os
 import sqlite3
 from datetime import datetime
@@ -22,7 +23,25 @@ CREATE TABLE IF NOT EXISTS results (
     points        INTEGER NOT NULL,
     total_seconds REAL NOT NULL
 );
+
+-- Личные настройки игрока: ключ -> значение (в виде JSON)
+CREATE TABLE IF NOT EXISTS settings (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    key     TEXT NOT NULL,
+    value   TEXT NOT NULL,
+    PRIMARY KEY (user_id, key)
+);
+
+-- Состояние приложения, например, кто играл последним
+CREATE TABLE IF NOT EXISTS app_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
+
+# Цвета аватаров игроков - по очереди для каждого нового игрока
+AVATAR_COLORS = ["#22d3ee", "#a78bfa", "#fbbf24", "#34d399", "#f472b6",
+                 "#60a5fa", "#fb923c", "#f87171"]
 
 
 def _now():
@@ -39,6 +58,15 @@ class Database:
         self._conn.row_factory = sqlite3.Row   # строки как словари
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self):
+        """Обновить базу, созданную старой версией программы: добавить колонку
+        с цветом аватара. Старые данные при этом сохраняются."""
+        columns = [row["name"] for row in self._conn.execute("PRAGMA table_info(users)")]
+        if "color" not in columns:
+            with self._conn:
+                self._conn.execute("ALTER TABLE users ADD COLUMN color TEXT")
 
     def get_or_create_user(self, name):
         name = name.strip()
@@ -52,6 +80,69 @@ class Database:
             "SELECT id FROM users WHERE name = ?", (name,)).fetchone()
         return row["id"]
 
+    # ---------- игроки ----------
+    def create_user(self, name):
+        """Новый игрок. Ошибка ValueError, если имя пустое или уже занято."""
+        name = name.strip()
+        if not name:
+            raise ValueError("Введите имя игрока.")
+        if len(name) > 20:
+            raise ValueError("Имя слишком длинное (до 20 букв).")
+        count = self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        color = AVATAR_COLORS[count % len(AVATAR_COLORS)]
+        try:
+            with self._conn:
+                cursor = self._conn.execute(
+                    "INSERT INTO users (name, created_at, color) VALUES (?, ?, ?)",
+                    (name, _now(), color))
+        except sqlite3.IntegrityError:
+            raise ValueError("Игрок с таким именем уже есть.") from None
+        return cursor.lastrowid
+
+    def list_users(self):
+        """Все игроки с числом тренировок (по порядку создания)."""
+        rows = self._conn.execute(
+            "SELECT u.id, u.name, u.color, COUNT(r.id) AS sessions "
+            "FROM users u LEFT JOIN results r ON r.user_id = u.id "
+            "GROUP BY u.id ORDER BY u.id")
+        users = []
+        for i, row in enumerate(rows):
+            user = dict(row)
+            # у игроков из старой базы цвета ещё нет - даём по порядку
+            user["color"] = user["color"] or AVATAR_COLORS[i % len(AVATAR_COLORS)]
+            users.append(user)
+        return users
+
+    # ---------- настройки игрока ----------
+    def get_settings(self, user_id):
+        """Настройки игрока словарём. Испорченные записи пропускаются."""
+        result = {}
+        for row in self._conn.execute(
+                "SELECT key, value FROM settings WHERE user_id = ?", (user_id,)):
+            try:
+                result[row["key"]] = json.loads(row["value"])
+            except ValueError:
+                pass
+        return result
+
+    def set_setting(self, user_id, key, value):
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO settings (user_id, key, value) VALUES (?, ?, ?)",
+                (user_id, key, json.dumps(value)))
+
+    # ---------- состояние приложения ----------
+    def get_state(self, key, default=None):
+        row = self._conn.execute("SELECT value FROM app_state WHERE key = ?",
+                                 (key,)).fetchone()
+        return json.loads(row["value"]) if row else default
+
+    def set_state(self, key, value):
+        with self._conn:
+            self._conn.execute("INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)",
+                               (key, json.dumps(value)))
+
+    # ---------- результаты ----------
     def save_session(self, user_id, session, played_at=None):
         """Сохранить итоги тренировки (TrainingSession). Возвращает id записи."""
         if session.total == 0:

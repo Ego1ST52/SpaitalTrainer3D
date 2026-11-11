@@ -11,9 +11,8 @@ from interface.layout3d import ui_to_world, fit_scale
 from interface.ui_kit import FRONT, label, mode_color, Panel, TopBar, UIButton
 from logic.answer_checker import check_answer
 from logic.projections import ProjectionTaskGenerator, VIEWS
-from logic.session import TrainingSession
+from interface.game_common import LEVEL_KEYS, new_training
 
-LEVEL_KEYS = {"1": "easy", "2": "medium", "3": "hard"}
 LETTERS = "АБВГД"
 
 SHAPE_UI = (-0.42, -0.02)    # где на экране стоит фигура
@@ -27,11 +26,10 @@ VIEW_LABEL_SCALE = 14        # размер подписей сторон в 3D-
 class ProjectionGameScreen(BaseScreen):
     """Режим «Проекции»: выбрать, как фигура выглядит спереди, сверху или справа."""
 
-    def __init__(self, manager, level="easy"):
+    def __init__(self, manager, level="easy", seed=None, locked=False):
         super().__init__(manager)
         self.accent = mode_color("projection")
-        self.generator = ProjectionTaskGenerator()
-        self.session = self._new_session(level)
+        self._start(level, seed, locked)
         self.rotator = SyncRotator()
         self.task = None
         self.task_started = 0.0
@@ -39,7 +37,7 @@ class ProjectionGameScreen(BaseScreen):
         self.task_objects = []
         self.option_buttons = []
 
-        self.top_bar = self.own(TopBar("projection", self.go_back, settings.SESSION_LENGTH))
+        self.top_bar = self.own(TopBar("projection", self.go_back))
         self.own(Panel(0.8, 0.62, position=(PANEL_X, 0)))
         self.question = self.own(label("", (PANEL_X - 0.37, 0.255), 1.25, "strong"))
         self.own(label("Представьте, что смотрите на фигуру с этой стороны",
@@ -53,8 +51,10 @@ class ProjectionGameScreen(BaseScreen):
                                              scale=(0.2, 0.06), variant="primary"))
         self.new_task()
 
-    def _new_session(self, level):
-        return TrainingSession("projection", level, settings.SESSION_LENGTH)
+    def _start(self, level, seed=None, locked=False):
+        """Новая тренировка: свой код и генератор заданий с этим зерном."""
+        self.session, seed = new_training("projection", level, seed, locked)
+        self.generator = ProjectionTaskGenerator(seed=seed)
 
     def _clear_task_objects(self):
         # Кнопки лежат внутри карточек и удаляются вместе с ними
@@ -165,8 +165,7 @@ class ProjectionGameScreen(BaseScreen):
         self._update_status()
 
     def _update_status(self):
-        s = self.session
-        self.top_bar.update_state(s.level, s.results, self.answered, s.points)
+        self.top_bar.update_state(self.session, self.answered)
 
     def update(self):
         self.rotator.update()
@@ -179,8 +178,8 @@ class ProjectionGameScreen(BaseScreen):
         super().close()
 
     def input(self, key):
-        if key in LEVEL_KEYS:
-            self.session = self._new_session(LEVEL_KEYS[key])  # заново
+        if key in LEVEL_KEYS and not self.session.locked:
+            self._start(LEVEL_KEYS[key])  # заново, с новым кодом
             self.new_task()
         elif key == "r":
             self.rotator.reset()

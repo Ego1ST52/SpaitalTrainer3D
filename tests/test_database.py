@@ -101,3 +101,61 @@ def test_summarize_values():
     assert summary["accuracy"] == pytest.approx(70)
     assert summary["points"] == 200 and summary["best_points"] == 120
     assert summary["average_seconds"] == pytest.approx(15)
+
+# ---------- игроки, настройки, состояние ----------
+def test_create_and_list_users(db):
+    anya = db.create_user("Аня")
+    boris = db.create_user("  Борис ")
+    db.save_session(anya, make_session())
+    users = db.list_users()
+    assert [u["name"] for u in users] == ["Аня", "Борис"]
+    assert users[0]["sessions"] == 1 and users[1]["sessions"] == 0
+    assert users[0]["color"] != users[1]["color"]      # разные аватары
+    assert boris == users[1]["id"]
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "x" * 21])
+def test_bad_user_names(db, bad):
+    with pytest.raises(ValueError):
+        db.create_user(bad)
+
+
+def test_duplicate_user_name(db):
+    db.create_user("Аня")
+    with pytest.raises(ValueError):
+        db.create_user("Аня")
+
+
+def test_settings_are_per_user(db):
+    anya, boris = db.create_user("Аня"), db.create_user("Борис")
+    db.set_setting(anya, "cube_skin", "dice")
+    db.set_setting(anya, "face_marks", True)
+    db.set_setting(anya, "cube_skin", "colorblind")      # перезапись
+    assert db.get_settings(anya) == {"cube_skin": "colorblind", "face_marks": True}
+    assert db.get_settings(boris) == {}
+
+
+def test_app_state(db):
+    assert db.get_state("last_user") is None
+    assert db.get_state("last_user", 5) == 5
+    db.set_state("last_user", 3)
+    assert db.get_state("last_user") == 3
+
+
+def test_old_database_is_upgraded(tmp_path):
+    """База от старой версии (без колонки color) открывается, данные целы."""
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.executescript("""
+        CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);
+        INSERT INTO users (name, created_at) VALUES ('Игрок', '2026-11-10T10:00:00');
+    """)
+    old.commit()
+    old.close()
+
+    database = Database(str(path))
+    users = database.list_users()
+    assert users[0]["name"] == "Игрок" and users[0]["color"]
+    database.create_user("Новый")
+    database.close()

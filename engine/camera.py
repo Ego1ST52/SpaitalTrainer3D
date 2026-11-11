@@ -1,5 +1,7 @@
 from ursina import *
 
+from core.preferences import prefs
+
 
 class CameraRig:
     """Камера: правая кнопка мыши вращает, колесо приближает."""
@@ -17,7 +19,8 @@ class CameraRig:
         interactive=False - камера закреплена (меню и прочие экраны с
         интерфейсом): иначе 3D-объекты уезжают под кнопки camera.ui."""
         self.control.ignore_input = not interactive
-        self.control.rotation_speed = self.ROTATION_SPEED if interactive else 0
+        speed = self.ROTATION_SPEED * prefs.sensitivity_factor   # из настроек игрока
+        self.control.rotation_speed = speed if interactive else 0
         self.control.zoom_speed = self.ZOOM_SPEED if interactive else 0
         self.control.pan_speed = self.PAN_SPEED if interactive else Vec2(0, 0)
         self.control.position = (0, 0, 0)

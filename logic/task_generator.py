@@ -14,9 +14,11 @@ LEVELS = {
 }
 
 
-def top_color(orientation):
-    """Цвет грани, которая при этой ориентации смотрит вверх."""
-    return settings.FACE_COLOR_NAMES[face_at(orientation, "+Y")]
+def top_color(orientation, face_names=None):
+    """Название грани, которая при этой ориентации смотрит вверх.
+    face_names - {грань: название} из скина куба (по умолчанию - цвета)."""
+    names = face_names or settings.FACE_COLOR_NAMES
+    return names[face_at(orientation, "+Y")]
 
 
 @dataclass(frozen=True)
@@ -44,9 +46,11 @@ class RotationTask:
 
 
 class RotationTaskGenerator:
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, face_names=None):
         self._rng = random.Random(seed)
         self._last_moves = None
+        # Названия граней зависят от скина куба (цвета или цифры кости)
+        self._names = face_names or settings.FACE_COLOR_NAMES
 
     def generate(self, level):
         if level not in LEVELS:
@@ -63,7 +67,7 @@ class RotationTaskGenerator:
             break
         self._last_moves = moves
 
-        correct = top_color(apply_sequence(IDENTITY, moves))
+        correct = top_color(apply_sequence(IDENTITY, moves), self._names)
         options = self._build_options(moves, correct, config["options"])
         return RotationTask(level, moves, tuple(options), options.index(correct))
 
@@ -82,8 +86,8 @@ class RotationTaskGenerator:
     def _build_options(self, moves, correct, total):
         # Правдоподобные ошибки: перепутанный порядок и пропущенный последний поворот
         candidates = [
-            top_color(apply_sequence(IDENTITY, list(reversed(moves)))),
-            top_color(apply_sequence(IDENTITY, moves[:-1])),
+            top_color(apply_sequence(IDENTITY, list(reversed(moves))), self._names),
+            top_color(apply_sequence(IDENTITY, moves[:-1]), self._names),
         ]
         options = [correct]
         for color_name in candidates:
@@ -91,7 +95,7 @@ class RotationTaskGenerator:
                 options.append(color_name)
 
         # Добираем случайными цветами, если вариантов не хватило
-        others = [c for c in settings.FACE_COLOR_NAMES.values() if c not in options]
+        others = [c for c in self._names.values() if c not in options]
         self._rng.shuffle(others)
         options.extend(others[: total - len(options)])
 

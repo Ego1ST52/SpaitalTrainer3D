@@ -6,6 +6,7 @@ from ursina.lights import DirectionalLight, AmbientLight
 from ursina.shaders import lit_with_shadows_shader
 
 from core import settings
+from core.preferences import prefs
 from core.scene_manager import SceneManager
 from data.database import Database
 from engine.backdrop import Backdrop
@@ -18,6 +19,8 @@ from interface.construction_interface import ConstructionGameScreen
 from interface.results_screen import ResultsScreen
 from interface.statistics_screen import StatisticsScreen
 from interface.progress_screen import ProgressScreen
+from interface.settings_screen import SettingsScreen
+from interface.profiles_screen import ProfilesScreen
 
 app = Ursina(title=settings.WINDOW_TITLE, borderless=False)
 window.color = color.hex(settings.BACKGROUND)
@@ -36,11 +39,36 @@ AmbientLight(color=color.rgba32(110, 110, 130))   # rgba32: значения 0..
 # База данных. Если она недоступна, игра всё равно работает.
 try:
     db = Database(settings.DB_PATH)
-    user_id = db.get_or_create_user(settings.DEFAULT_USER)
 except (sqlite3.Error, OSError) as error:
     print("База данных недоступна:", error)
     db = None
-    user_id = None
+
+# Текущий игрок. Его настройки загружаются в prefs (core/preferences.py).
+player = {"id": None, "name": settings.DEFAULT_USER, "color": settings.ACCENT}
+
+
+def activate_user(user_id):
+    """Сделать игрока текущим: загрузить его настройки и запомнить выбор."""
+    for user in db.list_users():
+        if user["id"] == user_id:
+            player.update(id=user_id, name=user["name"], color=user["color"])
+            break
+    prefs.load(db.get_settings(user_id))
+    db.set_state("last_user", user_id)
+
+
+def start_with_last_user():
+    """При запуске выбираем того, кто играл последним (или игрока по умолчанию)."""
+    ids = [user["id"] for user in db.list_users()]
+    last = db.get_state("last_user")
+    activate_user(last if last in ids else db.get_or_create_user(settings.DEFAULT_USER))
+
+
+if db is not None:
+    try:
+        start_with_last_user()
+    except sqlite3.Error as error:
+        print("Не удалось загрузить игрока:", error)
 
 rig = CameraRig()
 Backdrop()   # фон-свечение позади всех объектов
@@ -48,68 +76,126 @@ manager = SceneManager()
 
 
 def load_history():
-    """История тренировок или None, если база недоступна."""
-    if db is None:
+    """История тренировок текущего игрока или None, если база недоступна."""
+    if db is None or player["id"] is None:
         return None
     try:
-        return db.get_history(user_id)
+        return db.get_history(player["id"])
     except sqlite3.Error as error:
         print("Не удалось прочитать историю:", error)
         return None
 
 
-def open_menu():
+# ---------- игроки и настройки ----------
+def save_preference(key, value):
+    """Изменить настройку текущего игрока и сохранить её в базе."""
+    prefs.set(key, value)
+    if db is not None and player["id"] is not None:
+        try:
+            db.set_setting(player["id"], key, value)
+        except sqlite3.Error as error:
+            print("Не удалось сохранить настройку:", error)
+
+
+def select_user(user_id):
+    try:
+        activate_user(user_id)
+    except sqlite3.Error as error:
+        print("Не удалось выбрать игрока:", error)
+
+
+def create_user(name):
+    """Создать игрока и сразу выбрать его. Возвращает текст ошибки или None."""
+    try:
+        user_id = db.create_user(name)
+        activate_user(user_id)
+    except ValueError as error:
+        return str(error)
+    except sqlite3.Error:
+        return "Не удалось сохранить игрока в базу данных."
+    return None
+
+
+def list_users():
+    if db is None:
+        return None
+    try:
+        return db.list_users()
+    except sqlite3.Error:
+        return None
+
+
+# ---------- экраны ----------
+def menu_view():
+    """Ракурс для экранов с интерфейсом: камера закреплена."""
     rig.view((0, 0, -20), 0, interactive=False)
-    return MainMenu(manager, load_history())
 
 
-def open_rotation(level="easy"):
+def open_menu():
+    menu_view()
+    return MainMenu(manager, load_history(), player)
+
+
+def open_settings():
+    menu_view()
+    return SettingsScreen(manager, player["name"], save_preference)
+
+
+def open_profiles():
+    menu_view()
+    return ProfilesScreen(manager, list_users(), player["id"], select_user, create_user)
+
+
+# seed и locked приходят из «тренировки по коду» (см. interface/game_common.py)
+def open_rotation(level="easy", seed=None, locked=False):
     rig.view((0, 0, -11), 22)
-    return RotationGameScreen(manager, level)
+    return RotationGameScreen(manager, level, seed, locked)
 
 
-def open_matching(level="easy"):
+def open_matching(level="easy", seed=None, locked=False):
     # Камера закреплена: правая кнопка мыши вращает сами фигуры (см. SyncRotator),
     # иначе фигуры поменялись бы местами и ушли со своих кнопок.
     rig.view((0, 0, -24), 0, interactive=False)
-    return MatchingGameScreen(manager, level)
+    return MatchingGameScreen(manager, level, seed, locked)
 
 
-def open_projection(level="easy"):
+def open_projection(level="easy", seed=None, locked=False):
     rig.view((0, 0, -24), 0, interactive=False)
-    return ProjectionGameScreen(manager, level)
+    return ProjectionGameScreen(manager, level, seed, locked)
 
 
-def open_construction(level="easy"):
-    # Камера свободная: правой кнопкой мыши можно обойти стройку со всех сторон
+def open_construction(level="easy", seed=None, locked=False):
+    # Камера свободная: правой кнопкой мыши можно обойти стройку со всех сторон.
     # x = 1.8: камера чуть правее центра, поэтому стройка видна левее правой панели
     rig.view((1.8, 0, -17), 35)
-    return ConstructionGameScreen(manager, level)
+    return ConstructionGameScreen(manager, level, seed, locked)
 
 
 def open_results(session):
     saved = False
-    if db is not None:
+    if db is not None and player["id"] is not None:
         try:
-            db.save_session(user_id, session)
+            db.save_session(player["id"], session)
             saved = True
         except (sqlite3.Error, ValueError) as error:
             print("Не удалось сохранить результат:", error)
-    rig.view((0, 0, -20), 0, interactive=False)
+    menu_view()
     return ResultsScreen(manager, session, saved)
 
 
 def open_statistics():
-    rig.view((0, 0, -20), 0, interactive=False)
+    menu_view()
     return StatisticsScreen(manager, load_history())
 
 
 def open_progress():
-    rig.view((0, 0, -20), 0, interactive=False)
+    menu_view()
     return ProgressScreen(manager, load_history())
 
 
 manager.register("menu", open_menu)
+manager.register("settings", open_settings)
+manager.register("profiles", open_profiles)
 manager.register("rotation", open_rotation)
 manager.register("matching", open_matching)
 manager.register("projection", open_projection)

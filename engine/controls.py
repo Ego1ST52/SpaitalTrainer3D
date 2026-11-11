@@ -1,5 +1,7 @@
 from ursina import *
 
+from core.preferences import prefs
+
 
 class SyncRotator:
     """Правая кнопка мыши поворачивает сразу несколько объектов - каждый
@@ -29,9 +31,10 @@ class SyncRotator:
     def update(self):
         """Вызывать каждый кадр из update() экрана."""
         if held_keys["right mouse"]:
-            self.yaw -= mouse.velocity[0] * self.SPEED
+            speed = self.SPEED * prefs.sensitivity_factor      # из настроек игрока
+            self.yaw -= mouse.velocity[0] * speed
             # наклон ограничен, чтобы фигура не переворачивалась «через голову»
-            self.pitch = clamp(self.pitch + mouse.velocity[1] * self.SPEED, -85, 85)
+            self.pitch = clamp(self.pitch + mouse.velocity[1] * speed, -85, 85)
             self._apply()
 
     def _apply(self):

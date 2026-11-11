@@ -1,26 +1,38 @@
 from ursina import *
 from ursina.shaders import unlit_shader
 from core import settings
+from logic import cube_skins
 from logic.rotations import IDENTITY, rotate
+
+
+def _mark_color(hex_color):
+    """Цвет буквы на грани: тёмная на светлом фоне, белая на тёмном."""
+    c = color.hex(hex_color)
+    brightness = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b
+    return "#0b1220" if brightness > 0.55 else "#f8fafc"
 
 
 class ColoredCube(Entity):
     """Куб с цветными гранями. Точная ориентация хранится в self.orientation
-    (математика из logic/rotations.py), а Ursina лишь показывает её на экране."""
+    (математика из logic/rotations.py), а Ursina лишь показывает её на экране.
 
-    # Для каждой грани: (позиция, поворот, цвет)
+    skin - вид граней (см. logic/cube_skins.py): цвета, палитра для
+    дальтоников или игральная кость. marks=True - буквы на гранях."""
+
+    # Для каждой грани: позиция наклейки и поворот, при котором её лицевая
+    # сторона смотрит наружу (у плоских объектов Ursina лицо смотрит на -Z)
     FACES = {
-        "+X": (Vec3(0.501, 0, 0), Vec3(0, 90, 0), "#e63946"),   # красный
-        "-X": (Vec3(-0.501, 0, 0), Vec3(0, 90, 0), "#f77f00"),  # оранжевый
-        "+Y": (Vec3(0, 0.501, 0), Vec3(90, 0, 0), "#f1f5f9"),   # белый
-        "-Y": (Vec3(0, -0.501, 0), Vec3(90, 0, 0), "#ffd166"),  # жёлтый
-        "+Z": (Vec3(0, 0, 0.501), Vec3(0, 0, 0), "#2a6fdb"),    # синий
-        "-Z": (Vec3(0, 0, -0.501), Vec3(0, 0, 0), "#2a9d5c"),   # зелёный
+        "+X": (Vec3(0.5, 0, 0), Vec3(0, -90, 0)),
+        "-X": (Vec3(-0.5, 0, 0), Vec3(0, 90, 0)),
+        "+Y": (Vec3(0, 0.5, 0), Vec3(90, 0, 0)),
+        "-Y": (Vec3(0, -0.5, 0), Vec3(-90, 0, 0)),
+        "+Z": (Vec3(0, 0, 0.5), Vec3(0, 180, 0)),
+        "-Z": (Vec3(0, 0, -0.5), Vec3(0, 0, 0)),
     }
 
-    COLOR_NAMES = settings.FACE_COLOR_NAMES
+    COLOR_NAMES = settings.FACE_COLOR_NAMES   # названия граней скина «Цвета»
 
-    def __init__(self, **kwargs):
+    def __init__(self, skin="classic", marks=False, **kwargs):
         super().__init__(**kwargs)
         self.busy = False              # True, пока идёт анимация поворота
         self.orientation = IDENTITY    # точная ориентация (матрица 3x3)
@@ -29,11 +41,22 @@ class ColoredCube(Entity):
         Entity(parent=self, model="cube", color=color.hex(settings.CUBE_CORE),
                scale=0.98)
 
-        # Цветные "наклейки"
-        for position, rotation, hex_color in self.FACES.values():
-            Entity(parent=self, model="quad", position=position,
-                   rotation=rotation, color=color.hex(hex_color),
+        for face, (position, rotation) in self.FACES.items():
+            # «Рамка» грани: всё, что на ней нарисовано, лежит в её плоскости
+            frame = Entity(parent=self, position=position * 1.002, rotation=rotation)
+            hex_color = cube_skins.face_color(skin, face)
+            Entity(parent=frame, model="quad", color=color.hex(hex_color),
                    scale=0.9, double_sided=True)
+            if cube_skins.has_pips(skin):
+                count = int(cube_skins.face_names(skin)[face])
+                for px, py in cube_skins.PIP_LAYOUT[count]:
+                    Entity(parent=frame, model="circle", scale=0.15,
+                           position=(px * 0.9, py * 0.9, -0.004),
+                           color=color.hex("#1e293b"), shader=unlit_shader)
+            elif cube_skins.shows_marks(skin, marks):
+                Text(cube_skins.face_mark(skin, face), parent=frame, origin=(0, 0),
+                     position=(0, 0, -0.004), scale=15, shader=unlit_shader,
+                     color=color.hex(_mark_color(hex_color)))
 
     def reset(self):
         """Вернуть куб в исходное положение (когда он не анимируется)."""

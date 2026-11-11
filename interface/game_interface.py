@@ -7,15 +7,14 @@ from core import settings
 from engine.objects import ColoredCube, dispose
 from interface.base_screen import BaseScreen
 from interface.ui_kit import label, Panel, TopBar, UIButton
+from core.preferences import prefs
+from logic.cube_skins import (face_color, face_names, has_pips, option_text,
+                              start_description)
 from logic.task_generator import RotationTaskGenerator
 from logic.answer_checker import check_answer
-from logic.session import TrainingSession
+from interface.game_common import LEVEL_KEYS, new_training
 
-LEVEL_KEYS = {"1": "easy", "2": "medium", "3": "hard"}
 
-# Название цвета -> цвет наклейки на кубе (для квадратиков на кнопках)
-NAME_TO_HEX = {settings.FACE_COLOR_NAMES[face]: hex_color
-               for face, (_, _, hex_color) in ColoredCube.FACES.items()}
 
 # Правая панель с заданием
 PANEL_X = 0.62
@@ -38,10 +37,15 @@ def make_floor():
 class RotationGameScreen(BaseScreen):
     """Игровой экран режима 1: вращение куба."""
 
-    def __init__(self, manager, level="easy"):
+    def __init__(self, manager, level="easy", seed=None, locked=False):
         super().__init__(manager)
-        self.generator = RotationTaskGenerator()
-        self.session = self._new_session(level)
+        # Вид граней из настроек игрока: от него зависят и варианты ответа
+        self.skin = prefs.get("cube_skin")
+        names = face_names(self.skin)
+        # Цветные квадратики на кнопках ответа (у кости все грани белые - не нужны)
+        self.name_to_hex = ({} if has_pips(self.skin) else
+                            {name: face_color(self.skin, face) for face, name in names.items()})
+        self._start(level, seed, locked)
         self.task = None
         self.task_started = 0.0
         self.answered = False
@@ -50,14 +54,14 @@ class RotationGameScreen(BaseScreen):
         self.option_buttons = []
 
         self.own(make_floor())
-        self.cube = self.own(ColoredCube(scale=1.6))   # в центре: вокруг него вращается камера
+        self.cube = self.own(ColoredCube(skin=self.skin, marks=prefs.get("face_marks"),
+                                         scale=1.6))   # в центре: вокруг него вращается камера
 
-        self.top_bar = self.own(TopBar("rotation", self.go_back,
-                                       settings.SESSION_LENGTH))
+        self.top_bar = self.own(TopBar("rotation", self.go_back))
 
         left = window.top_left.x + 0.05
         self.own(label("Исходное положение", (left, 0.33), 0.8, "muted"))
-        self.own(label("Сверху белая грань, спереди зелёная", (left, 0.295), 1.0))
+        self.own(label(start_description(self.skin), (left, 0.295), 1.0))
         self.own(label("Правая кнопка мыши - осмотреть куб, колесо - приблизить",
                        (left, -0.455), 0.8, "muted"))
 
@@ -76,8 +80,10 @@ class RotationGameScreen(BaseScreen):
                                              text_size=0.8))
         self.new_task()
 
-    def _new_session(self, level):
-        return TrainingSession("rotation", level, settings.SESSION_LENGTH)
+    def _start(self, level, seed=None, locked=False):
+        """Новая тренировка: свой код и генератор заданий с этим зерном."""
+        self.session, seed = new_training("rotation", level, seed, locked)
+        self.generator = RotationTaskGenerator(seed=seed, face_names=face_names(self.skin))
 
     # ---------- задания ----------
     def _clear_task_objects(self):
@@ -102,10 +108,10 @@ class RotationGameScreen(BaseScreen):
                 label(f"{angle:+d}°", (PANEL_RIGHT, y), 1.0, "accent", origin=(0.5, 0)))
 
         for index, name in enumerate(self.task.options):
-            button = UIButton(name.capitalize(), lambda i=index: self.choose(i),
+            button = UIButton(option_text(self.skin, name), lambda i=index: self.choose(i),
                               position=(PANEL_X, -0.045 - index * 0.066),
                               scale=(PANEL_WIDTH - 0.06, 0.056),
-                              swatch=NAME_TO_HEX.get(name))
+                              swatch=self.name_to_hex.get(name))
             self.option_buttons.append(button)
 
         self.feedback.text = ""
@@ -134,15 +140,14 @@ class RotationGameScreen(BaseScreen):
             self.feedback.color = color.hex(settings.CORRECT_COLOR)
         else:
             self.option_buttons[index].set_variant("wrong")
-            self.feedback.text = f"Неверно. Ответ: {self.task.correct_option}"
+            self.feedback.text = f"Неверно. Ответ: {option_text(self.skin, self.task.correct_option).lower()}"
             self.feedback.color = color.hex(settings.WRONG_COLOR)
         if self.session.is_finished:
             self.next_button.text = "Результаты"
         self._update_status()
 
     def _update_status(self):
-        s = self.session
-        self.top_bar.update_state(s.level, s.results, self.answered, s.points)
+        self.top_bar.update_state(self.session, self.answered)
 
     # ---------- решение ----------
     def show_solution(self):
@@ -168,6 +173,6 @@ class RotationGameScreen(BaseScreen):
 
     # ---------- клавиши ----------
     def input(self, key):
-        if key in LEVEL_KEYS and not self.playing:
-            self.session = self._new_session(LEVEL_KEYS[key])  # заново
+        if key in LEVEL_KEYS and not self.playing and not self.session.locked:
+            self._start(LEVEL_KEYS[key])  # заново, с новым кодом
             self.new_task()

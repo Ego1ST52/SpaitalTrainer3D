@@ -35,6 +35,8 @@ def manager(app):
     from interface.matching_interface import MatchingGameScreen
     from interface.projection_interface import ProjectionGameScreen
     from interface.construction_interface import ConstructionGameScreen
+    from interface.settings_screen import SettingsScreen
+    from interface.profiles_screen import ProfilesScreen
 
     m = SceneManager()
     m.register("menu", lambda: MainMenu(m))
@@ -44,6 +46,11 @@ def manager(app):
     m.register("matching", lambda: MatchingGameScreen(m))
     m.register("projection", lambda: ProjectionGameScreen(m))
     m.register("construction", lambda: ConstructionGameScreen(m))
+    m.register("settings", lambda: SettingsScreen(m, "Тест", lambda key, value: None))
+    users = [{"id": 1, "name": "Аня", "color": "#22d3ee", "sessions": 3},
+             {"id": 2, "name": "Борис", "color": "#a78bfa", "sessions": 0}]
+    m.register("profiles", lambda: ProfilesScreen(m, users, 1, lambda uid: None,
+                                                  lambda name: None))
     m.go("menu")
     app.step()
     yield m
@@ -51,7 +58,8 @@ def manager(app):
     app.step()
 
 
-@pytest.mark.parametrize("screen", ["progress", "statistics", "rotation", "matching", "projection", "construction"])
+@pytest.mark.parametrize("screen", ["progress", "statistics", "rotation", "matching", "projection", "construction",
+                                    "settings", "profiles"])
 def test_screen_leaves_nothing_behind(app, manager, screen):
     before = count_entities()
     manager.go(screen)
@@ -153,3 +161,52 @@ def test_construction_place_stack_remove_and_check(app, manager):
     screen.check()
     assert screen.answered
     assert screen.session.results[-1].correct
+
+
+def test_code_dialog_starts_locked_training(app, manager):
+    """Верный код запускает нужный режим с нужным зерном, неверный - ошибка."""
+    menu = manager._current
+    started = []
+    menu.navigate = lambda name, **kwargs: started.append((name, kwargs))
+
+    menu.open_code_dialog()
+    menu.dialog.field.text = "12"
+    menu.dialog.submit()
+    assert "6 цифр" in menu.dialog.error.text and not started
+
+    menu.dialog.field.text = "31-4821"
+    menu.dialog.submit()
+    assert started == [("projection", {"level": "easy", "seed": 4821, "locked": True})]
+    assert menu.dialog is None                     # окно закрылось
+
+
+def test_locked_training_uses_code_and_fixed_length(app, manager):
+    from interface.matching_interface import MatchingGameScreen
+    from logic.matching_tasks import MatchingTaskGenerator
+
+    screen = MatchingGameScreen(manager, "medium", seed=4821, locked=True)
+    try:
+        assert screen.session.code == "22-4821"
+        assert screen.session.length == 10
+        expected = MatchingTaskGenerator(seed=4821).generate("medium")
+        assert screen.task == expected                 # те же задания, что у друга
+        screen.input("3")                              # уровень сменить нельзя
+        assert screen.session.level == "medium" and screen.session.code == "22-4821"
+    finally:
+        screen.close()
+
+
+def test_skin_setting_changes_rotation_answers(app, manager):
+    from core.preferences import prefs
+    from logic.cube_skins import face_names
+
+    prefs.set("cube_skin", "dice")
+    try:
+        manager.go("rotation")
+        app.step()
+        screen = manager._current
+        assert set(screen.task.options) <= set(face_names("dice").values())
+    finally:
+        prefs.load({})
+        manager.go("menu")
+        app.step()

@@ -3,9 +3,12 @@ from ursina import *
 from core import settings
 from data.statistics import summarize
 from engine.backdrop import FloatingCubes
-from engine.objects import ColoredCube
+from core.preferences import prefs
+from engine.objects import ColoredCube, dispose
 from interface.base_screen import BaseScreen
-from interface.ui_kit import label, LogoMark, ModeCard, Segmented, UIButton, StatTile
+from interface.code_dialog import CodeDialog
+from interface.ui_kit import (label, LogoMark, ModeCard, PlayerChip, Segmented, UIButton,
+                              StatTile)
 
 LEVELS = [("easy", "Начальный"), ("medium", "Средний"), ("hard", "Продвинутый")]
 
@@ -25,15 +28,22 @@ COLUMN_CENTER = COLUMN_LEFT + COLUMN_WIDTH / 2
 
 class MainMenu(BaseScreen):
     """Главное меню: слева режимы и сложность, справа вращающийся куб
-    и краткая сводка. history - список тренировок из базы или None."""
+    и краткая сводка. history - список тренировок из базы или None,
+    player - текущий игрок {"name": ..., "color": ...}."""
 
     # Выбранная сложность запоминается между заходами в меню
     remembered_level = "easy"
 
-    def __init__(self, manager, history=None):
+    def __init__(self, manager, history=None, player=None):
         super().__init__(manager)
         self.level = MainMenu.remembered_level
+        self.dialog = None
         self.own(FloatingCubes())
+
+        if player:
+            self.own(PlayerChip(player["name"], player["color"],
+                                lambda: self.navigate("profiles"),
+                                position=(window.top_right.x - 0.21, 0.41)))
 
         self.own(LogoMark((COLUMN_LEFT + 0.022, 0.4)))
         self.own(label("Тренажёр пространственного мышления",
@@ -50,13 +60,21 @@ class MainMenu(BaseScreen):
         self.own(Segmented(LEVELS, self.level, self.set_level,
                            position=(COLUMN_CENTER, -0.235), width=COLUMN_WIDTH))
 
-        self.own(UIButton("Статистика", lambda: self.navigate("statistics"),
-                          position=(COLUMN_LEFT + 0.11, -0.33), scale=(0.22, 0.06)))
+        buttons = [("Статистика", lambda: self.navigate("statistics")),
+                   ("Настройки", lambda: self.navigate("settings")),
+                   ("По коду", self.open_code_dialog)]
+        width = (COLUMN_WIDTH - 0.02) / len(buttons)
+        for i, (text, action) in enumerate(buttons):
+            self.own(UIButton(text, action, scale=(width, 0.06),
+                              position=(COLUMN_LEFT + width / 2 + i * (width + 0.01), -0.33)))
         self.own(UIButton("Выход", application.quit, variant="ghost",
-                          position=(COLUMN_LEFT + 0.31, -0.33), scale=(0.15, 0.06)))
+                          position=(COLUMN_LEFT + 0.06, -0.42), scale=(0.12, 0.05),
+                          text_size=0.8))
 
-        # Справа - медленно вращающийся куб (3D-объект в сцене)
-        self.cube = self.own(ColoredCube(position=(3.7, 0.9, 0), scale=2.3))
+        # Справа - медленно вращающийся куб в выбранном игроком виде
+        self.cube = self.own(ColoredCube(skin=prefs.get("cube_skin"),
+                                         marks=prefs.get("face_marks"),
+                                         position=(3.7, 0.9, 0), scale=2.3))
         self.cube.rotation_x = -22
         self._summary(history)
 
@@ -73,11 +91,31 @@ class MainMenu(BaseScreen):
                           tone="accent"))
 
     def update(self):
-        self.cube.rotation_y += 18 * time.dt
+        if not prefs.reduce_motion:
+            self.cube.rotation_y += 18 * time.dt
 
     def set_level(self, level):
         self.level = level
         MainMenu.remembered_level = level
 
     def start(self, mode):
-        self.navigate(mode, level=self.level)
+        if self.dialog is None:
+            self.navigate(mode, level=self.level)
+
+    # ---------- тренировка по коду ----------
+    def open_code_dialog(self):
+        if self.dialog is None:
+            self.dialog = CodeDialog(self.start_by_code, self.close_code_dialog)
+
+    def close_code_dialog(self):
+        if self.dialog is not None:
+            dispose(self.dialog)
+            self.dialog = None
+
+    def start_by_code(self, mode, level, seed):
+        self.close_code_dialog()
+        self.navigate(mode, level=level, seed=seed, locked=True)
+
+    def close(self):
+        self.close_code_dialog()
+        super().close()
