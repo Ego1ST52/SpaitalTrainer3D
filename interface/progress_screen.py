@@ -1,17 +1,20 @@
 from ursina import *
+from ursina.shaders import unlit_shader
 
 from core import settings
 from data.statistics import filter_history, progress_series, compare_recent
 from engine.objects import dispose
 from interface.base_screen import BaseScreen
+from interface.ui_kit import FRONT, label, Panel, Segmented, UIButton
 
-MODES = [None, "rotation", "matching"]
-LEVELS = [None, "easy", "medium", "hard"]
+MODES = [(None, "Все"), ("rotation", "Вращение"), ("matching", "Фигуры")]
+LEVELS = [(None, "Все"), ("easy", "Начальный"), ("medium", "Средний"),
+          ("hard", "Продвинутый")]
 
-CHART_LEFT = -0.55
-CHART_WIDTH = 1.1
-CHART_BOTTOM = -0.17
-CHART_HEIGHT = 0.36
+CHART_LEFT = -0.68
+CHART_WIDTH = 1.4
+CHART_BOTTOM = -0.27
+CHART_HEIGHT = 0.3
 MAX_BARS = 12
 
 
@@ -21,94 +24,101 @@ class ProgressScreen(BaseScreen):
     def __init__(self, manager, history):
         super().__init__(manager)
         self.history = history
-        self.mode_index = 0
-        self.level_index = 0
-        self.chart_objects = []
-        accent = color.hex(settings.ACCENT)
+        self.mode = None
+        self.level = None
+        # Все элементы графика - дети одного контейнера. Контейнер принадлежит
+        # экрану (own), поэтому при выходе удаляется вместе со всем графиком.
+        self.chart = self.own(Entity(parent=camera.ui))
 
-        self.own(Text("Прогресс", origin=(0, 0), position=(0, 0.4),
-                      scale=2.2, color=accent))
-        self._button("В меню", (0, -0.4), lambda: self.navigate("menu"), (0.3, 0.07))
-        self.own(Text("Показатели отражают результаты в игре и не доказывают "
-                      "изменения когнитивных способностей.",
-                      origin=(0, 0), position=(0, -0.46), scale=0.9,
-                      color=color.hex("#64748b")))
+        left = window.top_left.x + 0.05
+        right = window.top_right.x - 0.05
+        self.own(label("Прогресс", (left, 0.42), 2.0, "strong"))
+        self.own(label("Точность по последним тренировкам", (left, 0.365), 0.85, "muted"))
+        self.own(UIButton("Статистика", lambda: self.navigate("statistics"),
+                          position=(right - 0.32, 0.42), scale=(0.2, 0.06)))
+        self.own(UIButton("В меню", lambda: self.navigate("menu"),
+                          position=(right - 0.09, 0.42), scale=(0.18, 0.06),
+                          variant="ghost"))
+        self.own(label("Показатели отражают результаты в игре и не доказывают "
+                       "изменения когнитивных способностей.",
+                       (0, -0.45), 0.8, "muted", origin=(0, 0)))
 
         if history is None:
-            self.own(Text("Не удалось прочитать данные из базы.", origin=(0, 0),
-                          position=(0, 0.1), scale=1.2,
-                          color=color.hex(settings.WRONG_COLOR)))
+            self.own(label("Не удалось прочитать данные из базы.", (0, 0), 1.0,
+                           "wrong", origin=(0, 0)))
             return
 
-        self.mode_button = self._button("", (-0.3, 0.3), self.next_mode, (0.5, 0.07))
-        self.level_button = self._button("", (0.3, 0.3), self.next_level, (0.5, 0.07))
+        self.own(label("Режим", (-0.81, 0.27), 0.8, "muted"))
+        self.mode_switch = self.own(Segmented(MODES, None, self.set_mode,
+                                              position=(-0.48, 0.22), width=0.66))
+        self.own(label("Уровень", (-0.05, 0.27), 0.8, "muted"))
+        self.level_switch = self.own(Segmented(LEVELS, None, self.set_level,
+                                               position=(0.38, 0.22), width=0.86))
+        self.own(Panel(1.62, 0.5, position=(0, -0.1)))
         self.refresh()
 
-    def _button(self, label, position, action, scale):
-        button = Button(text=label, color=color.hex(settings.BUTTON_COLOR),
-                        highlight_color=color.hex(settings.BUTTON_HOVER),
-                        scale=scale, position=position)
-        button.on_click = action
-        return self.own(button)
+    # ---------- фильтры ----------
+    def set_mode(self, mode):
+        self.mode = mode
+        self.refresh()
+
+    def set_level(self, level):
+        self.level = level
+        self.refresh()
 
     def next_mode(self):
-        self.mode_index = (self.mode_index + 1) % len(MODES)
-        self.refresh()
+        keys = [key for key, _ in MODES]
+        self.mode_switch.select(keys[(keys.index(self.mode) + 1) % len(keys)])
 
     def next_level(self):
-        self.level_index = (self.level_index + 1) % len(LEVELS)
-        self.refresh()
+        keys = [key for key, _ in LEVELS]
+        self.level_switch.select(keys[(keys.index(self.level) + 1) % len(keys)])
 
-    def _chart_text(self, text, position, scale=1.0, text_color=None):
-        obj = Text(text, origin=(0, 0), position=position, scale=scale,
-                   color=text_color or color.hex(settings.TEXT_COLOR))
-        self.chart_objects.append(obj)
+    # ---------- график ----------
+    def _chart_text(self, text, position, size=1.0, tone="text", origin=(0, 0)):
+        label(text, position, size, tone, origin=origin, parent=self.chart)
 
-    def _chart_rect(self, center_x, y, width, height, hex_color, bottom_origin=False):
-        obj = Entity(parent=camera.ui, model="quad",
-                     origin=(0, -0.5) if bottom_origin else (0, 0),
-                     position=(center_x, y), scale=(width, height),
-                     color=color.hex(hex_color))
-        self.chart_objects.append(obj)
+    def _chart_rect(self, center_x, y, width, height, hex_color, bottom_origin=False,
+                    z=FRONT / 2):
+        Entity(parent=self.chart, model="quad", shader=unlit_shader,
+               origin=(0, -0.5) if bottom_origin else (0, 0),
+               position=(center_x, y, z), scale=(width, height),
+               color=color.hex(hex_color))
 
     def refresh(self):
-        for obj in self.chart_objects:
+        # Стираем старый график, сам контейнер оставляем
+        for obj in list(self.chart.children):
             dispose(obj)
-        self.chart_objects = []
 
-        mode = MODES[self.mode_index]
-        level = LEVELS[self.level_index]
-        self.mode_button.text = "Режим: " + ("все" if mode is None
-                                             else settings.MODE_NAMES[mode])
-        self.level_button.text = "Уровень: " + ("все" if level is None
-                                                else settings.LEVEL_NAMES[level])
-
-        subset = filter_history(self.history, mode, level)
+        subset = filter_history(self.history, self.mode, self.level)
         series = progress_series(subset, MAX_BARS)
         if not series:
-            self._chart_text("Нет тренировок с такими настройками.", (0, 0), 1.2)
+            self._chart_text("Нет тренировок с такими настройками.", (0, -0.1), 1.0, "muted")
             return
 
-        self._chart_text(f"Точность по последним {len(series)} тренировкам, %",
-                         (0, 0.22), 1.1)
+        self._chart_text(f"Точность, %  •  последние {len(series)}", (CHART_LEFT, 0.11),
+                         0.8, "muted", origin=(-0.5, 0))
 
         # Линии сетки: 0%, 50%, 100% с подписями
         for percent in (0, 50, 100):
             y = CHART_BOTTOM + CHART_HEIGHT * percent / 100
-            self._chart_rect(CHART_LEFT + CHART_WIDTH / 2, y, CHART_WIDTH, 0.002, "#2b3e5a")
-            self._chart_text(f"{percent}", (CHART_LEFT - 0.04, y), 0.9)
+            self._chart_rect(CHART_LEFT + CHART_WIDTH / 2, y, CHART_WIDTH, 0.0015,
+                             settings.BORDER, z=FRONT / 4)   # сетка - позади столбцов
+            self._chart_text(f"{percent}", (CHART_LEFT - 0.035, y), 0.75, "muted")
 
-        # Столбцы
+        # Столбцы: последний (самый новый) - ярким акцентом, остальные приглушённее
         slot = CHART_WIDTH / MAX_BARS
         for i, value in enumerate(series):
             x = CHART_LEFT + slot * (i + 0.5)
             height = max(0.004, CHART_HEIGHT * value / 100)
-            self._chart_rect(x, CHART_BOTTOM, slot * 0.7, height,
-                             settings.ACCENT, bottom_origin=True)
-            self._chart_text(f"{value:.0f}", (x, CHART_BOTTOM + height + 0.025), 0.8)
+            newest = i == len(series) - 1
+            self._chart_rect(x, CHART_BOTTOM, slot * 0.55, height,
+                             settings.ACCENT if newest else settings.SELECTED_COLOR,
+                             bottom_origin=True)
+            self._chart_text(f"{value:.0f}", (x, CHART_BOTTOM + height + 0.022), 0.75,
+                             "strong" if newest else "text")
 
-        self._chart_text("старые  ->  новые", (0, CHART_BOTTOM - 0.04), 0.9,
-                         color.hex("#64748b"))
+        self._chart_text("старые  ›  новые", (0, CHART_BOTTOM - 0.035), 0.75, "muted")
 
         # Сравнение последних тренировок с более ранними
         comparison = compare_recent(subset, 3)
@@ -116,8 +126,8 @@ class ProgressScreen(BaseScreen):
             text = "Для сравнения нужно больше 3 тренировок с выбранными настройками."
         else:
             text = (f"Последние {comparison['recent_count']}: "
-                    f"{comparison['recent_accuracy']:.0f}%.  "
-                    f"Более ранние ({comparison['earlier_count']}): "
-                    f"{comparison['earlier_accuracy']:.0f}%.  "
-                    f"Разница: {comparison['difference']:+.0f} п.п.")
-        self._chart_text(text, (0, -0.28), 1.1)
+                    f"{comparison['recent_accuracy']:.0f}%   •   "
+                    f"более ранние ({comparison['earlier_count']}): "
+                    f"{comparison['earlier_accuracy']:.0f}%   •   "
+                    f"разница {comparison['difference']:+.0f} п.п.")
+        self._chart_text(text, (0, -0.39), 0.9)

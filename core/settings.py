@@ -3,11 +3,19 @@
 WINDOW_TITLE = "Spatial Trainer 3D"
 
 # Тёмная тема
-BACKGROUND = "#0e1621"
-FLOOR_COLOR = "#162233"
+BACKGROUND = "#0b1220"
+FLOOR_COLOR = "#0f1828"
 ACCENT = "#22d3ee"
 TEXT_COLOR = "#cbd5e1"
 CUBE_CORE = "#1b2433"
+
+# Палитра интерфейса (используется в interface/ui_kit.py)
+SURFACE = "#121c2e"          # фон карточек и панелей
+SURFACE_HOVER = "#192841"    # карточка под курсором
+BORDER = "#1f2d45"           # тонкая рамка панелей
+ACCENT_DIM = "#0e3a46"       # тёмная подложка под акцентные иконки
+TEXT_STRONG = "#f1f5f9"      # заголовки
+TEXT_MUTED = "#64748b"       # подписи и подсказки
 
 # Шрифт с кириллицей (путь относительно папки с main.py)
 FONT_PATH = "OpenSans-Regular.ttf"
@@ -28,10 +36,10 @@ CORRECT_COLOR = "#22c55e"
 WRONG_COLOR = "#ef4444"
 LABEL_SCALE = 40   # размер букв-меток в 3D-сцене (подберите, если мелко/крупно)
 # Интерфейс
-BUTTON_COLOR = "#1e2a3d"
-BUTTON_HOVER = "#2b3e5a"
+BUTTON_COLOR = "#18243a"
+BUTTON_HOVER = "#22324d"
 SELECTED_COLOR = "#0e7490"
-SHOW_FPS = True
+SHOW_FPS = False   # счётчик кадров в углу (для отладки)
 # Тренировка
 SESSION_LENGTH = 10
 

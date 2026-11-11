@@ -39,8 +39,9 @@ class ColoredCube(Entity):
         self.orientation = IDENTITY
         self.rotation = Vec3(0, 0, 0)
 
-    def rotate_world(self, axis, angle):
+    def rotate_world(self, axis, angle, on_done=None):
         """Повернуть куб на angle градусов вокруг мировой оси 'x', 'y' или 'z'.
+        on_done вызывается, когда анимация закончилась.
         Возвращает True, если поворот принят, и False, если куб ещё занят."""
         if self.busy:
             return False
@@ -56,14 +57,35 @@ class ColoredCube(Entity):
         pivot.animate(f"rotation_{axis}", visual_angle,
                       duration=settings.ROTATION_DURATION,
                       curve=curve.in_out_cubic)
-        invoke(self._finish_rotation, pivot,
+        invoke(self._finish_rotation, pivot, axis, visual_angle, on_done,
                delay=settings.ROTATION_DURATION + 0.02)
         return True
 
-    def _finish_rotation(self, pivot):
+    def _finish_rotation(self, pivot, axis, visual_angle, on_done):
+        # Ставим точный конечный угол: если кадр «подвис», анимация могла
+        # не успеть дойти до конца, и куб остался бы повёрнутым не до конца.
+        setattr(pivot, f"rotation_{axis}", visual_angle)
         self.world_parent = scene
         destroy(pivot)
         self.busy = False
+        if on_done:
+            on_done()
+
+    def play_moves(self, moves, on_done=None, pause=0.15):
+        """Показать повороты по очереди. Следующий поворот начинается только
+        после окончания предыдущего, поэтому ни один не потеряется, даже
+        если компьютер на мгновение «подвиснет»."""
+        moves = list(moves)
+        if not moves:
+            if on_done:
+                on_done()
+            return
+        axis, angle = moves[0]
+
+        def next_move():
+            invoke(self.play_moves, moves[1:], on_done, pause, delay=pause)
+
+        self.rotate_world(axis, angle, on_done=next_move)
 
 
 class ShapeView(Entity):

@@ -16,9 +16,10 @@ from interface.results_screen import ResultsScreen
 from interface.statistics_screen import StatisticsScreen
 from interface.progress_screen import ProgressScreen
 
-app = Ursina(title=settings.WINDOW_TITLE)
+app = Ursina(title=settings.WINDOW_TITLE, borderless=False)
 window.color = color.hex(settings.BACKGROUND)
-window.fps_counter.enabled = settings.SHOW_FPS
+# Служебные счётчики Ursina (кадры, объекты) показываем только для отладки
+window.editor_ui.enabled = settings.SHOW_FPS
 
 if os.path.exists(settings.FONT_PATH):
     Text.default_font = settings.FONT_PATH
@@ -27,7 +28,7 @@ Entity.default_shader = lit_with_shadows_shader
 
 sun = DirectionalLight(shadows=True)
 sun.look_at(Vec3(1, -1.5, 1))
-AmbientLight(color=color.rgba(110, 110, 130, 0.1))
+AmbientLight(color=color.rgba32(110, 110, 130))   # rgba32: значения 0..255
 
 # База данных. Если она недоступна, игра всё равно работает.
 try:
@@ -55,16 +56,16 @@ def load_history():
 
 def open_menu():
     rig.view((0, 0, -20), 0)
-    return MainMenu(manager)
+    return MainMenu(manager, load_history())
 
 
 def open_rotation(level="easy"):
-    rig.view((0, 2, -8), 15)
+    rig.view((0, 0, -11), 22)
     return RotationGameScreen(manager, level)
 
 
 def open_matching(level="easy"):
-    rig.view((0, 1, -24), 10)
+    rig.view((0, 0, -24), 0)
     return MatchingGameScreen(manager, level)
 
 
