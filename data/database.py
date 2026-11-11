@@ -152,7 +152,7 @@ class Database:
                 "INSERT INTO results (user_id, mode, level, played_at, "
                 "tasks_total, tasks_correct, points, total_seconds) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (user_id, session.mode, session.level, played_at or _now(),
+                (user_id, session.mode, session.summary_level, played_at or _now(),
                  session.total, session.correct, session.points,
                  session.total_time))
         return cursor.lastrowid

@@ -155,6 +155,13 @@ def _draw_icon(kind, parent, hex_color):
                color=tint, shader=unlit_shader)
         Entity(parent=parent, model="quad", scale=0.022, position=(0.014, 0, FRONT),
                rotation_z=45, color=tint, shader=unlit_shader)
+    elif kind == "custom":
+        # Четыре клетки в цветах всех режимов - «смесь»
+        for (cx, cy), mode in zip(((-0.011, 0.011), (0.011, 0.011), (-0.011, -0.011),
+                                   (0.011, -0.011)),
+                                  ("rotation", "matching", "projection", "construction")):
+            Entity(parent=parent, model="quad", scale=0.019, position=(cx, cy, FRONT),
+                   color=color.hex(mode_color(mode)), shader=unlit_shader)
     elif kind == "construction":
         # Лесенка из кубиков: 1 + 2 + 3
         for cx, cy in ((-0.016, -0.016), (0, -0.016), (0.016, -0.016),
@@ -268,6 +275,9 @@ class TopBar(Entity):
         self.progress_text = label("", (0, 0.452), 0.8, "muted", origin=(0, 0),
                                    parent=self)
         self.segments_holder = Entity(parent=self, position=(0, 0.418))
+        # Короткое сообщение под полоской прогресса («Уровень повышен: ...»)
+        self.flash_text = label("", (0, 0.38), 0.85, self.accent, origin=(0, 0), parent=self)
+        self.flash_left = 0.0
 
         label("Баллы", (right - 0.32, 0.452), 0.8, "muted", parent=self)
         self.points_text = label("0", (right - 0.32, 0.415), 1.3, self.accent, parent=self)
@@ -276,13 +286,18 @@ class TopBar(Entity):
 
     def update_state(self, session, answered):
         """session - текущая тренировка, answered - ответ на задание уже дан."""
-        hint = (f"тренировка по коду {session.code}" if session.locked
-                else "сменить: клавиши 1, 2, 3")
-        self.level_text.text = f"{settings.LEVEL_NAMES[session.level]} уровень  •  {hint}"
-        results, length = session.results, session.length
+        note = getattr(session, "note", "")
+        level_name = settings.LEVEL_NAMES[session.current_level]
+        self.level_text.text = f"{level_name} уровень  •  {note}" if note else             f"{level_name} уровень"
+        results, length, points = session.results, session.length, session.points
+        playlist = getattr(session, "playlist", None)
+        if playlist is not None:
+            # «Моя тренировка»: прогресс и баллы за всю тренировку, а не за этап
+            results = playlist.all_results + session.results
+            length, points = playlist.total_tasks, playlist.points + session.points
         number = len(results) if answered else len(results) + 1
         self.progress_text.text = f"Задание {min(number, length)} из {length}"
-        self.points_text.text = str(session.points)
+        self.points_text.text = str(points)
 
         for child in list(self.segments_holder.children):
             destroy(child)
@@ -299,6 +314,25 @@ class TopBar(Entity):
             Entity(parent=self.segments_holder, model="quad", shader=unlit_shader,
                    position=(-width / 2 + segment / 2 + i * (segment + gap), 0, FRONT),
                    scale=(segment, 0.008), color=color.hex(hex_color))
+
+
+    def flash_level(self, session):
+        """Если после ответа сменился уровень (адаптивная сложность) -
+        на пару секунд показать это под полоской прогресса."""
+        change = session.level_change
+        if change is None:
+            return
+        word = "повышен" if change == "up" else "понижен"
+        self.flash_text.text = f"Уровень {word}: {settings.LEVEL_NAMES[session.current_level]}"
+        self.flash_text.color = color.hex(settings.CORRECT_COLOR if change == "up"
+                                          else settings.TEXT_COLOR)
+        self.flash_left = 2.5
+
+    def update(self):
+        if self.flash_left > 0:
+            self.flash_left -= time.dt
+            if self.flash_left <= 0:
+                self.flash_text.text = ""
 
 
 class Avatar(Entity):

@@ -29,6 +29,7 @@ MODE_COLORS = {
     "matching": ("#a78bfa", "#2a2150"),
     "projection": ("#fbbf24", "#3d2e0a"),
     "construction": ("#34d399", "#0b3a2c"),
+    "custom": ("#f472b6", "#3d1630"),
 }
 
 # Шрифт с кириллицей (путь относительно папки с main.py)
@@ -64,7 +65,8 @@ SESSION_LENGTH = 10
 
 LEVEL_NAMES = {"easy": "Начальный", "medium": "Средний", "hard": "Продвинутый"}
 MODE_NAMES = {"rotation": "Вращение куба", "matching": "Одинаковые фигуры",
-              "projection": "Проекции", "construction": "Конструирование"}
+              "projection": "Проекции", "construction": "Конструирование",
+              "custom": "Моя тренировка"}
 # База данных
 DB_PATH = "data/spatial_trainer.db"
 DEFAULT_USER = "Игрок"

@@ -18,6 +18,7 @@ MODES = [
     ("02", "matching", "Одинаковые фигуры", "Найдите фигуру после поворота"),
     ("03", "projection", "Проекции", "Как фигура выглядит с разных сторон"),
     ("04", "construction", "Конструирование", "Соберите фигуру из кубиков по образцу"),
+    ("05", "custom", "Моя тренировка", "Несколько режимов в одной тренировке"),
 ]
 
 # Левая колонка меню: левый край и центр
@@ -53,12 +54,12 @@ class MainMenu(BaseScreen):
         for i, (number, mode, title, subtitle) in enumerate(MODES):
             self.own(ModeCard(number, title, subtitle, mode,
                               lambda m=mode: self.start(m),
-                              position=(COLUMN_CENTER, 0.215 - i * 0.108),
-                              width=COLUMN_WIDTH, height=0.094, appear_delay=0.08 * i))
+                              position=(COLUMN_CENTER, 0.225 - i * 0.094),
+                              width=COLUMN_WIDTH, height=0.083, appear_delay=0.07 * i))
 
-        self.own(label("Сложность", (COLUMN_LEFT, -0.19), 0.8, "muted"))
+        self.own(label("Сложность", (COLUMN_LEFT, -0.22), 0.8, "muted"))
         self.own(Segmented(LEVELS, self.level, self.set_level,
-                           position=(COLUMN_CENTER, -0.235), width=COLUMN_WIDTH))
+                           position=(COLUMN_CENTER, -0.262), width=COLUMN_WIDTH))
 
         buttons = [("Статистика", lambda: self.navigate("statistics")),
                    ("Настройки", lambda: self.navigate("settings")),
@@ -66,9 +67,9 @@ class MainMenu(BaseScreen):
         width = (COLUMN_WIDTH - 0.02) / len(buttons)
         for i, (text, action) in enumerate(buttons):
             self.own(UIButton(text, action, scale=(width, 0.06),
-                              position=(COLUMN_LEFT + width / 2 + i * (width + 0.01), -0.33)))
+                              position=(COLUMN_LEFT + width / 2 + i * (width + 0.01), -0.345)))
         self.own(UIButton("Выход", application.quit, variant="ghost",
-                          position=(COLUMN_LEFT + 0.06, -0.42), scale=(0.12, 0.05),
+                          position=(COLUMN_LEFT + 0.06, -0.43), scale=(0.12, 0.05),
                           text_size=0.8))
 
         # Справа - медленно вращающийся куб в выбранном игроком виде
@@ -100,7 +101,11 @@ class MainMenu(BaseScreen):
 
     def start(self, mode):
         if self.dialog is None:
-            self.navigate(mode, level=self.level)
+            # «Моя тренировка» - сначала экран-конструктор, остальные режимы сразу
+            if mode == "custom":
+                self.navigate("custom")
+            else:
+                self.navigate(mode, level=self.level)
 
     # ---------- тренировка по коду ----------
     def open_code_dialog(self):

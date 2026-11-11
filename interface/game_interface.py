@@ -12,7 +12,7 @@ from logic.cube_skins import (face_color, face_names, has_pips, option_text,
                               start_description)
 from logic.task_generator import RotationTaskGenerator
 from logic.answer_checker import check_answer
-from interface.game_common import LEVEL_KEYS, new_training
+from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
 
 
 
@@ -37,7 +37,7 @@ def make_floor():
 class RotationGameScreen(BaseScreen):
     """Игровой экран режима 1: вращение куба."""
 
-    def __init__(self, manager, level="easy", seed=None, locked=False):
+    def __init__(self, manager, level="easy", seed=None, locked=False, playlist=None):
         super().__init__(manager)
         # Вид граней из настроек игрока: от него зависят и варианты ответа
         self.skin = prefs.get("cube_skin")
@@ -45,7 +45,7 @@ class RotationGameScreen(BaseScreen):
         # Цветные квадратики на кнопках ответа (у кости все грани белые - не нужны)
         self.name_to_hex = ({} if has_pips(self.skin) else
                             {name: face_color(self.skin, face) for face, name in names.items()})
-        self._start(level, seed, locked)
+        self._start(level, seed, locked, playlist)
         self.task = None
         self.task_started = 0.0
         self.answered = False
@@ -80,9 +80,10 @@ class RotationGameScreen(BaseScreen):
                                              text_size=0.8))
         self.new_task()
 
-    def _start(self, level, seed=None, locked=False):
+    def _start(self, level, seed=None, locked=False, playlist=None):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
-        self.session, seed = new_training("rotation", level, seed, locked)
+        self.playlist = playlist     # шаг «Моей тренировки» или None
+        self.session, seed = new_training("rotation", level, seed, locked, playlist)
         self.generator = RotationTaskGenerator(seed=seed, face_names=face_names(self.skin))
 
     # ---------- задания ----------
@@ -93,7 +94,7 @@ class RotationGameScreen(BaseScreen):
         self.option_buttons = []
 
     def new_task(self):
-        self.task = self.generator.generate(self.session.level)
+        self.task = self.generator.generate(self.session.current_level)
         self.answered = False
         self.task_started = perf_counter()
         self.cube.reset()
@@ -121,7 +122,7 @@ class RotationGameScreen(BaseScreen):
         if self.playing or not self.answered:
             return
         if self.session.is_finished:
-            self.navigate("results", session=self.session)
+            finish_training(self)
         else:
             self.new_task()
 
@@ -133,6 +134,7 @@ class RotationGameScreen(BaseScreen):
         seconds = perf_counter() - self.task_started
         correct = check_answer(self.task, index)
         points = self.session.record(correct, seconds)
+        self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
         self.option_buttons[self.task.correct_index].set_variant("correct")
         if correct:
@@ -143,7 +145,7 @@ class RotationGameScreen(BaseScreen):
             self.feedback.text = f"Неверно. Ответ: {option_text(self.skin, self.task.correct_option).lower()}"
             self.feedback.color = color.hex(settings.WRONG_COLOR)
         if self.session.is_finished:
-            self.next_button.text = "Результаты"
+            self.next_button.text = finish_label(self)
         self._update_status()
 
     def _update_status(self):

@@ -5,8 +5,13 @@
 выборе игрока, а экраны просто читают, например, prefs.get("cube_skin").
 """
 
+import copy
+
+from logic.playlist import validate_plan
+
 # Для каждой настройки: допустимые значения (первое - по умолчанию не обязательно)
 OPTIONS = {
+    "adaptive": (False, True),
     "cube_skin": ("classic", "colorblind", "dice"),
     "face_marks": (False, True),
     "session_length": (5, 10, 15, 20),
@@ -14,7 +19,15 @@ OPTIONS = {
     "reduce_motion": (False, True),
 }
 
+# Сложные настройки (словари) проверяются функцией, а не списком значений
+VALIDATORS = {
+    "custom_plan": validate_plan,     # последний набор из «Моей тренировки»
+}
+
 DEFAULTS = {
+    "adaptive": False,
+    "custom_plan": {"modes": ["rotation", "projection"], "level": "easy", "per_mode": 3,
+                    "order": "mixed", "adaptive": True},
     "cube_skin": "classic",
     "face_marks": False,
     "session_length": 10,
@@ -27,26 +40,31 @@ SENSITIVITY_FACTOR = {"low": 0.6, "medium": 1.0, "high": 1.6}
 
 class Preferences:
     def __init__(self, values=None):
-        self._values = dict(DEFAULTS)
+        self._values = copy.deepcopy(DEFAULTS)
         if values:
             self.load(values)
 
     def get(self, key):
-        return self._values[key]
+        # Копия, чтобы случайно не изменить настройку в обход set()
+        return copy.deepcopy(self._values[key])
 
     def set(self, key, value):
         """Изменить настройку. Недопустимое значение - ошибка."""
-        if key not in OPTIONS:
+        if key in VALIDATORS:
+            if not isinstance(value, dict):
+                raise ValueError(f"Недопустимое значение {value!r} для {key!r}")
+            VALIDATORS[key](value)
+        elif key not in OPTIONS:
             raise KeyError(f"Неизвестная настройка: {key!r}")
-        if value not in OPTIONS[key]:
+        elif value not in OPTIONS[key]:
             raise ValueError(f"Недопустимое значение {value!r} для {key!r}")
-        self._values[key] = value
+        self._values[key] = copy.deepcopy(value)
 
     def load(self, values):
         """Сбросить к значениям по умолчанию и взять из values всё допустимое.
         Неизвестные ключи и испорченные значения молча пропускаются, чтобы
         повреждённая запись в базе не ломала запуск игры."""
-        self._values = dict(DEFAULTS)
+        self._values = copy.deepcopy(DEFAULTS)
         for key, value in values.items():
             try:
                 self.set(key, value)
@@ -54,7 +72,7 @@ class Preferences:
                 pass
 
     def as_dict(self):
-        return dict(self._values)
+        return copy.deepcopy(self._values)
 
     # ---------- удобные производные значения ----------
     @property

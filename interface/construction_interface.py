@@ -10,7 +10,7 @@ from interface.base_screen import BaseScreen
 from interface.ui_kit import label, mode_color, Panel, TopBar, UIButton
 from logic.construction import Build, ConstructionTaskGenerator, GRID_HALF, \
     build_hint, check_build
-from interface.game_common import LEVEL_KEYS, new_training
+from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
 
 
 PANEL_X = 0.62
@@ -24,10 +24,10 @@ class ConstructionGameScreen(BaseScreen):
     """Режим 4: собрать из кубиков фигуру по образцу.
     Клик - поставить кубик, Shift+клик - убрать, Ctrl+Z - отменить."""
 
-    def __init__(self, manager, level="easy", seed=None, locked=False):
+    def __init__(self, manager, level="easy", seed=None, locked=False, playlist=None):
         super().__init__(manager)
         self.accent = mode_color("construction")
-        self._start(level, seed, locked)
+        self._start(level, seed, locked, playlist)
         self.task = None
         self.build = None
         self.blocks = {}            # клетка -> 3D-кубик
@@ -71,14 +71,15 @@ class ConstructionGameScreen(BaseScreen):
                        (window.top_left.x + 0.05, -0.455), 0.75, "muted"))
         self.new_task()
 
-    def _start(self, level, seed=None, locked=False):
+    def _start(self, level, seed=None, locked=False, playlist=None):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
-        self.session, seed = new_training("construction", level, seed, locked)
+        self.playlist = playlist     # шаг «Моей тренировки» или None
+        self.session, seed = new_training("construction", level, seed, locked, playlist)
         self.generator = ConstructionTaskGenerator(seed=seed)
 
     # ---------- задания ----------
     def new_task(self):
-        self.task = self.generator.generate(self.session.level)
+        self.task = self.generator.generate(self.session.current_level)
         self.build = Build(self.task.max_cubes)
         self.answered = False
         self.task_started = perf_counter()
@@ -194,6 +195,7 @@ class ConstructionGameScreen(BaseScreen):
         seconds = perf_counter() - self.task_started
         correct = check_build(self.build.cells, self.task.target)
         points = self.session.record(correct, seconds)
+        self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
         result_color = settings.CORRECT_COLOR if correct else settings.WRONG_COLOR
         for block in self.blocks.values():
@@ -206,13 +208,13 @@ class ConstructionGameScreen(BaseScreen):
         self.feedback.text = textwrap.fill(message, 34)
         self.feedback.color = color.hex(result_color)
         self.ghost.enabled = False
-        self.action_button.text = ("Результаты" if self.session.is_finished
+        self.action_button.text = (finish_label(self) if self.session.is_finished
                                    else "Дальше")
         self._refresh()
 
     def next_task(self):
         if self.session.is_finished:
-            self.navigate("results", session=self.session)
+            finish_training(self)
         else:
             self.new_task()
 

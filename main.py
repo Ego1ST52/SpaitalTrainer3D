@@ -21,6 +21,8 @@ from interface.statistics_screen import StatisticsScreen
 from interface.progress_screen import ProgressScreen
 from interface.settings_screen import SettingsScreen
 from interface.profiles_screen import ProfilesScreen
+from interface.custom_screen import CustomTrainingScreen
+from interface.custom_results_screen import CustomResultsScreen
 
 app = Ursina(title=settings.WINDOW_TITLE, borderless=False)
 window.color = color.hex(settings.BACKGROUND)
@@ -146,29 +148,51 @@ def open_profiles():
     return ProfilesScreen(manager, list_users(), player["id"], select_user, create_user)
 
 
-# seed и locked приходят из «тренировки по коду» (см. interface/game_common.py)
-def open_rotation(level="easy", seed=None, locked=False):
+# seed и locked приходят из «тренировки по коду», playlist - из «Моей тренировки»
+# (см. interface/game_common.py)
+def open_rotation(level="easy", seed=None, locked=False, playlist=None):
     rig.view((0, 0, -11), 22)
-    return RotationGameScreen(manager, level, seed, locked)
+    return RotationGameScreen(manager, level, seed, locked, playlist)
 
 
-def open_matching(level="easy", seed=None, locked=False):
+def open_matching(level="easy", seed=None, locked=False, playlist=None):
     # Камера закреплена: правая кнопка мыши вращает сами фигуры (см. SyncRotator),
     # иначе фигуры поменялись бы местами и ушли со своих кнопок.
     rig.view((0, 0, -24), 0, interactive=False)
-    return MatchingGameScreen(manager, level, seed, locked)
+    return MatchingGameScreen(manager, level, seed, locked, playlist)
 
 
-def open_projection(level="easy", seed=None, locked=False):
+def open_projection(level="easy", seed=None, locked=False, playlist=None):
     rig.view((0, 0, -24), 0, interactive=False)
-    return ProjectionGameScreen(manager, level, seed, locked)
+    return ProjectionGameScreen(manager, level, seed, locked, playlist)
 
 
-def open_construction(level="easy", seed=None, locked=False):
+def open_construction(level="easy", seed=None, locked=False, playlist=None):
     # Камера свободная: правой кнопкой мыши можно обойти стройку со всех сторон.
     # x = 1.8: камера чуть правее центра, поэтому стройка видна левее правой панели
     rig.view((1.8, 0, -17), 35)
-    return ConstructionGameScreen(manager, level, seed, locked)
+    return ConstructionGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_custom():
+    menu_view()
+    return CustomTrainingScreen(manager, prefs.get("custom_plan"),
+                                lambda plan: save_preference("custom_plan", plan))
+
+
+def open_custom_results(playlist):
+    """Итоги «Моей тренировки». В базу пишем по одной записи на режим, чтобы
+    статистика и прогресс по режимам оставались честными."""
+    saved = False
+    if db is not None and player["id"] is not None:
+        try:
+            for session in playlist.merged_by_mode():
+                db.save_session(player["id"], session)
+            saved = True
+        except (sqlite3.Error, ValueError) as error:
+            print("Не удалось сохранить результат:", error)
+    menu_view()
+    return CustomResultsScreen(manager, playlist, saved)
 
 
 def open_results(session):
@@ -201,6 +225,8 @@ manager.register("matching", open_matching)
 manager.register("projection", open_projection)
 manager.register("construction", open_construction)
 manager.register("results", open_results)
+manager.register("custom", open_custom)
+manager.register("custom_results", open_custom_results)
 manager.register("statistics", open_statistics)
 manager.register("progress", open_progress)
 

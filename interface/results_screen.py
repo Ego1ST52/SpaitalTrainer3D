@@ -20,8 +20,13 @@ class ResultsScreen(BaseScreen):
         self.own(label("Тренировка завершена", (0, 0.4), 0.9, accent, origin=(0, 0)))
         self.own(label(settings.MODE_NAMES[s.mode], (0, 0.35), 1.9, "strong",
                        origin=(0, 0)))
-        self.own(label(f"{settings.LEVEL_NAMES[s.level]} уровень", (0, 0.3), 0.9,
-                       "muted", origin=(0, 0)))
+        if s.adaptive and len(s.levels_path) > 1:
+            # Адаптивная сложность: показываем, как менялся уровень
+            path = "  ›  ".join(settings.LEVEL_NAMES[lvl] for lvl in s.levels_path)
+            level_text = f"Уровень по ходу тренировки:  {path}"
+        else:
+            level_text = f"{settings.LEVEL_NAMES[s.summary_level]} уровень"
+        self.own(label(level_text, (0, 0.3), 0.9, "muted", origin=(0, 0)))
 
         # Главная цифра - точность
         self.own(label(f"{s.accuracy:.0f}%", (0, 0.19), 5, accent, origin=(0, 0)))

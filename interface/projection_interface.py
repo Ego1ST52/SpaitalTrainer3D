@@ -11,7 +11,7 @@ from interface.layout3d import ui_to_world, fit_scale
 from interface.ui_kit import FRONT, label, mode_color, Panel, TopBar, UIButton
 from logic.answer_checker import check_answer
 from logic.projections import ProjectionTaskGenerator, VIEWS
-from interface.game_common import LEVEL_KEYS, new_training
+from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
 
 LETTERS = "АБВГД"
 
@@ -26,10 +26,10 @@ VIEW_LABEL_SCALE = 14        # размер подписей сторон в 3D-
 class ProjectionGameScreen(BaseScreen):
     """Режим «Проекции»: выбрать, как фигура выглядит спереди, сверху или справа."""
 
-    def __init__(self, manager, level="easy", seed=None, locked=False):
+    def __init__(self, manager, level="easy", seed=None, locked=False, playlist=None):
         super().__init__(manager)
         self.accent = mode_color("projection")
-        self._start(level, seed, locked)
+        self._start(level, seed, locked, playlist)
         self.rotator = SyncRotator()
         self.task = None
         self.task_started = 0.0
@@ -51,9 +51,10 @@ class ProjectionGameScreen(BaseScreen):
                                              scale=(0.2, 0.06), variant="primary"))
         self.new_task()
 
-    def _start(self, level, seed=None, locked=False):
+    def _start(self, level, seed=None, locked=False, playlist=None):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
-        self.session, seed = new_training("projection", level, seed, locked)
+        self.playlist = playlist     # шаг «Моей тренировки» или None
+        self.session, seed = new_training("projection", level, seed, locked, playlist)
         self.generator = ProjectionTaskGenerator(seed=seed)
 
     def _clear_task_objects(self):
@@ -120,7 +121,7 @@ class ProjectionGameScreen(BaseScreen):
 
     # ---------- задания ----------
     def new_task(self):
-        self.task = self.generator.generate(self.session.level)
+        self.task = self.generator.generate(self.session.current_level)
         self.answered = False
         self.task_started = perf_counter()
         self.next_button.text = "Дальше"
@@ -139,7 +140,7 @@ class ProjectionGameScreen(BaseScreen):
         if not self.answered:
             return
         if self.session.is_finished:
-            self.navigate("results", session=self.session)
+            finish_training(self)
         else:
             self.new_task()
 
@@ -150,6 +151,7 @@ class ProjectionGameScreen(BaseScreen):
         seconds = perf_counter() - self.task_started
         correct = check_answer(self.task, index)
         points = self.session.record(correct, seconds)
+        self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
         right = self.task.correct_index
         self.option_buttons[right].set_variant("correct")
@@ -161,7 +163,7 @@ class ProjectionGameScreen(BaseScreen):
             self.feedback.text = f"Неверно. Правильный ответ: {LETTERS[right]}"
             self.feedback.color = color.hex(settings.WRONG_COLOR)
         if self.session.is_finished:
-            self.next_button.text = "Результаты"
+            self.next_button.text = finish_label(self)
         self._update_status()
 
     def _update_status(self):

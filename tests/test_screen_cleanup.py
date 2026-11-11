@@ -20,6 +20,19 @@ HISTORY = [{"id": i, "mode": "rotation", "level": "easy",
            for i in range(5)]
 
 
+def _finished_playlist():
+    """Пройденная «Моя тренировка» из двух режимов (для экрана итогов)."""
+    from logic.playlist import Playlist
+    from logic.session import TrainingSession
+    playlist = Playlist([("rotation", 2), ("projection", 1)], "easy", adaptive=True)
+    for mode, answers in (("rotation", (True, False)), ("projection", (True,))):
+        session = TrainingSession(mode, "easy", len(answers), adaptive=playlist.adaptive)
+        for answer in answers:
+            session.record(answer, 4)
+        playlist.finish_step(session)
+    return playlist
+
+
 def count_entities():
     return len([e for e in ursina.scene.entities
                 if e and not getattr(e, "eternal", False)])
@@ -37,6 +50,9 @@ def manager(app):
     from interface.construction_interface import ConstructionGameScreen
     from interface.settings_screen import SettingsScreen
     from interface.profiles_screen import ProfilesScreen
+    from interface.custom_screen import CustomTrainingScreen
+    from interface.custom_results_screen import CustomResultsScreen
+    from core.preferences import DEFAULTS
 
     m = SceneManager()
     m.register("menu", lambda: MainMenu(m))
@@ -51,6 +67,9 @@ def manager(app):
              {"id": 2, "name": "Борис", "color": "#a78bfa", "sessions": 0}]
     m.register("profiles", lambda: ProfilesScreen(m, users, 1, lambda uid: None,
                                                   lambda name: None))
+    m.register("custom", lambda: CustomTrainingScreen(m, DEFAULTS["custom_plan"],
+                                                      lambda plan: None))
+    m.register("custom_results", lambda: CustomResultsScreen(m, _finished_playlist()))
     m.go("menu")
     app.step()
     yield m
@@ -59,7 +78,7 @@ def manager(app):
 
 
 @pytest.mark.parametrize("screen", ["progress", "statistics", "rotation", "matching", "projection", "construction",
-                                    "settings", "profiles"])
+                                    "settings", "profiles", "custom", "custom_results"])
 def test_screen_leaves_nothing_behind(app, manager, screen):
     before = count_entities()
     manager.go(screen)
@@ -210,3 +229,64 @@ def test_skin_setting_changes_rotation_answers(app, manager):
         prefs.load({})
         manager.go("menu")
         app.step()
+
+
+def test_custom_training_flows_through_modes(app, manager):
+    """«Моя тренировка»: этап вращения -> этап проекций -> общие итоги.
+    Адаптивный уровень общий: 3 верных ответа в разных режимах поднимают его."""
+    from interface.game_interface import RotationGameScreen
+    from interface.projection_interface import ProjectionGameScreen
+    from logic.playlist import Playlist
+
+    playlist = Playlist([("rotation", 2), ("projection", 1)], "easy", adaptive=True)
+    calls = []
+
+    screen = RotationGameScreen(manager, playlist=playlist)
+    screen.navigate = lambda name, **kwargs: calls.append((name, kwargs))
+    try:
+        assert screen.session.length == 2 and screen.session.locked
+        screen.input("3")                                   # уровень вручную не меняется
+        assert screen.session.level == "easy"
+        for _ in range(2):
+            screen.choose(screen.task.correct_index)
+            assert screen.next_button.text in ("Дальше", "Следующий этап")
+            screen.next_task()
+    finally:
+        screen.close()
+    assert calls == [("projection", {"playlist": playlist})]
+    assert playlist.index == 1
+
+    calls.clear()
+    screen = ProjectionGameScreen(manager, playlist=playlist)
+    screen.navigate = lambda name, **kwargs: calls.append((name, kwargs))
+    try:
+        screen.choose(screen.task.correct_index)
+        assert screen.next_button.text == "Результаты"
+        screen.next_task()
+    finally:
+        screen.close()
+    assert calls == [("custom_results", {"playlist": playlist})]
+    assert playlist.is_done and playlist.correct == 3
+    assert playlist.adaptive.level == "medium"              # 3 верных подряд - выше
+
+
+def test_custom_builder_requires_a_mode(app, manager):
+    from interface.custom_screen import CustomTrainingScreen
+
+    saved, calls = [], []
+    plan = {"modes": ["rotation"], "level": "easy", "per_mode": 3, "order": "blocks",
+            "adaptive": False}
+    screen = CustomTrainingScreen(manager, plan, saved.append)
+    screen.navigate = lambda name, **kwargs: calls.append((name, kwargs))
+    try:
+        screen.toggle("rotation")                           # сняли единственный режим
+        screen.start()
+        assert "хотя бы один" in screen.error.text and not calls
+        screen.toggle("matching")
+        screen.change("per_mode", 5)
+        screen.start()
+        assert saved[-1]["modes"] == ["matching"] and saved[-1]["per_mode"] == 5
+        name, kwargs = calls[-1]
+        assert name == "matching" and kwargs["playlist"].steps == [("matching", 5)]
+    finally:
+        screen.close()

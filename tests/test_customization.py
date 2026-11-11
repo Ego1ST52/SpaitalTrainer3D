@@ -82,8 +82,20 @@ def test_preferences_load_skips_broken_values():
 
 
 def test_defaults_are_allowed_values():
+    p = Preferences()
     for key, value in DEFAULTS.items():
-        assert value in OPTIONS[key]
+        p.set(key, value)                   # не должно быть ошибки
+
+
+def test_custom_plan_is_validated_and_copied():
+    p = Preferences()
+    plan = p.get("custom_plan")
+    plan["modes"].append("matching")        # изменили копию - настройка не тронута
+    assert "matching" not in p.get("custom_plan")["modes"]
+    with pytest.raises(ValueError):
+        p.set("custom_plan", {"modes": []})
+    p.set("custom_plan", plan)
+    assert "matching" in p.get("custom_plan")["modes"]
 
 
 def test_session_length_for_construction_is_shorter():
