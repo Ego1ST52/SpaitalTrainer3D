@@ -154,6 +154,12 @@ def _draw_icon(kind, parent, hex_color):
                color=tint, shader=unlit_shader)
         Entity(parent=parent, model="quad", scale=0.022, position=(0.014, 0, FRONT),
                rotation_z=45, color=tint, shader=unlit_shader)
+    elif kind == "construction":
+        # Лесенка из кубиков: 1 + 2 + 3
+        for cx, cy in ((-0.016, -0.016), (0, -0.016), (0.016, -0.016),
+                       (0, 0), (0.016, 0), (0.016, 0.016)):
+            Entity(parent=parent, model="quad", scale=0.0145, position=(cx, cy, FRONT),
+                   color=tint, shader=unlit_shader)
     elif kind == "projection":
         # Плоская «тень» фигуры: три клетки уголком
         for cx, cy in ((-0.011, -0.011), (0.011, -0.011), (-0.011, 0.011)):

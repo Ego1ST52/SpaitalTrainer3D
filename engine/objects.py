@@ -1,4 +1,5 @@
 from ursina import *
+from ursina.shaders import unlit_shader
 from core import settings
 from logic.rotations import IDENTITY, rotate
 
@@ -111,6 +112,58 @@ class ShapeView(Entity):
     def contains(self, entity):
         """Принадлежит ли entity (например, кубик под курсором) этой фигуре."""
         return entity in self.cubes
+
+
+class ShadedShape(Entity):
+    """Фигура из кубиков для слоя интерфейса (camera.ui). Там нет освещения,
+    поэтому грани каждого кубика закрашены разными оттенками - так фигура
+    всё равно выглядит объёмной."""
+
+    # Грань: (позиция, поворот, яркость)
+    FACES = [
+        (Vec3(0, 0.5, 0), Vec3(90, 0, 0), 1.0),      # верх - самый светлый
+        (Vec3(0, -0.5, 0), Vec3(-90, 0, 0), 0.45),
+        (Vec3(0, 0, -0.5), Vec3(0, 0, 0), 0.8),      # перед
+        (Vec3(0, 0, 0.5), Vec3(0, 180, 0), 0.6),
+        (Vec3(0.5, 0, 0), Vec3(0, -90, 0), 0.65),
+        (Vec3(-0.5, 0, 0), Vec3(0, 90, 0), 0.7),
+    ]
+
+    def __init__(self, cells, hex_color, **kwargs):
+        super().__init__(parent=kwargs.pop("parent", camera.ui), **kwargs)
+        base = color.hex(hex_color)
+        center = [(max(c[i] for c in cells) + min(c[i] for c in cells)) / 2
+                  for i in range(3)]
+        for cell in cells:
+            cube = Entity(parent=self, scale=0.92,
+                          position=tuple(cell[i] - center[i] for i in range(3)))
+            for position, rotation, light in self.FACES:
+                Entity(parent=cube, model="quad", position=position, rotation=rotation,
+                       color=color.rgba(base.r * light, base.g * light, base.b * light, 1),
+                       shader=unlit_shader, double_sided=True)
+
+
+class ShadedBlock(Entity):
+    """Кубик постройки: тёмное ядро и грани разной яркости (верх светлее,
+    низ темнее), поэтому кубики хорошо читаются и между ними видны швы.
+    Коллайдер нужен, чтобы мышь могла попасть в кубик и его грани."""
+
+    def __init__(self, hex_color, **kwargs):
+        super().__init__(model="cube", color=color.hex(settings.CUBE_CORE),
+                         scale=0.98, collider="box", **kwargs)
+        self.faces = []
+        for position, rotation, light in ShadedShape.FACES:
+            self.faces.append(Entity(parent=self, model="quad", scale=0.9,
+                                     position=position * 1.004, rotation=rotation,
+                                     shader=unlit_shader, double_sided=True))
+            self.faces[-1].light = light
+        self.set_color(hex_color)
+
+    def set_color(self, hex_color):
+        base = color.hex(hex_color)
+        for face in self.faces:
+            face.color = color.rgba(base.r * face.light, base.g * face.light,
+                                    base.b * face.light, 1)
 
 
 def dispose(entity):

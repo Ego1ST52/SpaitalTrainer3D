@@ -28,6 +28,7 @@ MODE_COLORS = {
     "rotation": ("#22d3ee", "#0b3440"),
     "matching": ("#a78bfa", "#2a2150"),
     "projection": ("#fbbf24", "#3d2e0a"),
+    "construction": ("#34d399", "#0b3a2c"),
 }
 
 # Шрифт с кириллицей (путь относительно папки с main.py)
@@ -47,6 +48,9 @@ FACE_COLOR_NAMES = {
 SHAPE_COLOR = "#a78bfa"
 SHAPE_HOVER = "#ddd6fe"      # фигура под курсором
 PROJECTION_SHAPE_COLOR = "#fbbf24"
+# Режим 4: конструирование
+BUILD_COLOR = "#34d399"
+CONSTRUCTION_LENGTH = 5     # сборка дольше, поэтому заданий в тренировке меньше
 CORRECT_COLOR = "#22c55e"
 WRONG_COLOR = "#ef4444"
 LABEL_SCALE = 40   # размер букв-меток в 3D-сцене (подберите, если мелко/крупно)
@@ -60,7 +64,7 @@ SESSION_LENGTH = 10
 
 LEVEL_NAMES = {"easy": "Начальный", "medium": "Средний", "hard": "Продвинутый"}
 MODE_NAMES = {"rotation": "Вращение куба", "matching": "Одинаковые фигуры",
-              "projection": "Проекции"}
+              "projection": "Проекции", "construction": "Конструирование"}
 # База данных
 DB_PATH = "data/spatial_trainer.db"
 DEFAULT_USER = "Игрок"

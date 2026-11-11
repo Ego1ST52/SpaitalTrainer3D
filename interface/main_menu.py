@@ -14,6 +14,7 @@ MODES = [
     ("01", "rotation", "Вращение куба", "Какая грань окажется сверху"),
     ("02", "matching", "Одинаковые фигуры", "Найдите фигуру после поворота"),
     ("03", "projection", "Проекции", "Как фигура выглядит с разных сторон"),
+    ("04", "construction", "Конструирование", "Соберите фигуру из кубиков по образцу"),
 ]
 
 # Левая колонка меню: левый край и центр
@@ -42,17 +43,17 @@ class MainMenu(BaseScreen):
         for i, (number, mode, title, subtitle) in enumerate(MODES):
             self.own(ModeCard(number, title, subtitle, mode,
                               lambda m=mode: self.start(m),
-                              position=(COLUMN_CENTER, 0.2 - i * 0.12),
-                              width=COLUMN_WIDTH, appear_delay=0.08 * i))
+                              position=(COLUMN_CENTER, 0.215 - i * 0.108),
+                              width=COLUMN_WIDTH, height=0.094, appear_delay=0.08 * i))
 
-        self.own(label("Сложность", (COLUMN_LEFT, -0.135), 0.8, "muted"))
+        self.own(label("Сложность", (COLUMN_LEFT, -0.19), 0.8, "muted"))
         self.own(Segmented(LEVELS, self.level, self.set_level,
-                           position=(COLUMN_CENTER, -0.18), width=COLUMN_WIDTH))
+                           position=(COLUMN_CENTER, -0.235), width=COLUMN_WIDTH))
 
         self.own(UIButton("Статистика", lambda: self.navigate("statistics"),
-                          position=(COLUMN_LEFT + 0.11, -0.28), scale=(0.22, 0.06)))
+                          position=(COLUMN_LEFT + 0.11, -0.33), scale=(0.22, 0.06)))
         self.own(UIButton("Выход", application.quit, variant="ghost",
-                          position=(COLUMN_LEFT + 0.31, -0.28), scale=(0.15, 0.06)))
+                          position=(COLUMN_LEFT + 0.31, -0.33), scale=(0.15, 0.06)))
 
         # Справа - медленно вращающийся куб (3D-объект в сцене)
         self.cube = self.own(ColoredCube(position=(3.7, 0.9, 0), scale=2.3))

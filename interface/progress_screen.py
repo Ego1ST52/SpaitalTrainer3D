@@ -8,7 +8,7 @@ from interface.base_screen import BaseScreen
 from interface.ui_kit import FRONT, label, Panel, Segmented, UIButton
 
 MODES = [(None, "Все"), ("rotation", "Вращение"), ("matching", "Фигуры"),
-         ("projection", "Проекции")]
+         ("projection", "Проекции"), ("construction", "Сборка")]
 LEVELS = [(None, "Все"), ("easy", "Начальный"), ("medium", "Средний"),
           ("hard", "Продвинутый")]
 
