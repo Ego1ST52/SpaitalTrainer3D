@@ -290,3 +290,52 @@ def test_custom_builder_requires_a_mode(app, manager):
         assert name == "matching" and kwargs["playlist"].steps == [("matching", 5)]
     finally:
         screen.close()
+
+
+def _fresh_menu(manager, app):
+    from interface.main_menu import MainMenu
+    MainMenu.remembered_nav, MainMenu.remembered_turns = (0, 0), 0
+    manager.go("menu")
+    app.step()
+    menu = manager._current
+    calls = []
+    menu.navigate = lambda name, **kwargs: calls.append((name, kwargs))
+    return menu, calls
+
+
+def test_cube_menu_turns_and_opens_mode(app, manager):
+    import time
+    menu, calls = _fresh_menu(manager, app)
+    assert menu.nav.front_content == "rotation"
+    menu.input("right arrow")
+    assert menu.nav.front_content == "matching" and menu.cube.yaw_turns == 1
+    menu.input("enter")
+    deadline = time.time() + 2
+    while not calls and time.time() < deadline:      # ждём «влёт» в грань
+        app.step()
+    assert calls == [("matching", {"level": menu.level})]
+
+
+def test_clicking_side_face_turns_cube(app, manager):
+    menu, calls = _fresh_menu(manager, app)
+    side = [e for e in menu.cube.contents["left"].children if e.collider][0]
+    menu._click(side)                                 # клик по краю левой грани
+    assert menu.nav.front_face == "left" and menu.nav.front_content == "construction"
+    assert not calls                                   # только повернули, не открыли
+
+
+def test_cube_net_jumps_to_face(app, manager):
+    menu, calls = _fresh_menu(manager, app)
+    menu.go_to("bottom")
+    assert menu.nav.front_content == "hub"
+    menu.go_to("top")
+    assert menu.nav.front_content == "custom"
+
+
+def test_hub_buttons_work_only_when_hub_is_in_front(app, manager):
+    menu, calls = _fresh_menu(manager, app)
+    menu._hub_action("settings")
+    assert not calls                                   # спереди «Вращение» - кнопка спит
+    menu.go_to("bottom")
+    menu._hub_action("settings")
+    assert calls == [("settings", {})]

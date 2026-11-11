@@ -134,7 +134,8 @@ def menu_view():
 
 
 def open_menu():
-    menu_view()
+    # Меню - куб-навигатор: камера ближе, чем на других экранах, куб крупный
+    rig.view((0, 0, -22), 0, interactive=False)
     return MainMenu(manager, load_history(), player)
 
 
