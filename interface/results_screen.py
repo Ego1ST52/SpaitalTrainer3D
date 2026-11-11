@@ -3,7 +3,8 @@ from ursina.shaders import unlit_shader
 
 from core import settings
 from interface.base_screen import BaseScreen
-from interface.ui_kit import FRONT, label, StatTile, UIButton
+from engine.backdrop import FloatingCubes
+from interface.ui_kit import FRONT, label, mode_color, StatTile, UIButton
 from logic.session import format_duration
 
 
@@ -13,15 +14,17 @@ class ResultsScreen(BaseScreen):
     def __init__(self, manager, session, saved=True):
         super().__init__(manager)
         s = session
+        accent = mode_color(s.mode)
+        self.own(FloatingCubes())
 
-        self.own(label("Тренировка завершена", (0, 0.4), 0.9, "accent", origin=(0, 0)))
+        self.own(label("Тренировка завершена", (0, 0.4), 0.9, accent, origin=(0, 0)))
         self.own(label(settings.MODE_NAMES[s.mode], (0, 0.35), 1.9, "strong",
                        origin=(0, 0)))
         self.own(label(f"{settings.LEVEL_NAMES[s.level]} уровень", (0, 0.3), 0.9,
                        "muted", origin=(0, 0)))
 
         # Главная цифра - точность
-        self.own(label(f"{s.accuracy:.0f}%", (0, 0.19), 5, "accent", origin=(0, 0)))
+        self.own(label(f"{s.accuracy:.0f}%", (0, 0.19), 5, accent, origin=(0, 0)))
         self.own(label("точность", (0, 0.105), 0.9, "muted", origin=(0, 0)))
 
         tiles = [

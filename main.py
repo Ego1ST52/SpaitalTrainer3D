@@ -8,10 +8,12 @@ from ursina.shaders import lit_with_shadows_shader
 from core import settings
 from core.scene_manager import SceneManager
 from data.database import Database
+from engine.backdrop import Backdrop
 from engine.camera import CameraRig
 from interface.main_menu import MainMenu
 from interface.game_interface import RotationGameScreen
 from interface.matching_interface import MatchingGameScreen
+from interface.projection_interface import ProjectionGameScreen
 from interface.results_screen import ResultsScreen
 from interface.statistics_screen import StatisticsScreen
 from interface.progress_screen import ProgressScreen
@@ -40,6 +42,7 @@ except (sqlite3.Error, OSError) as error:
     user_id = None
 
 rig = CameraRig()
+Backdrop()   # фон-свечение позади всех объектов
 manager = SceneManager()
 
 
@@ -65,8 +68,15 @@ def open_rotation(level="easy"):
 
 
 def open_matching(level="easy"):
-    rig.view((0, 0, -24), 0)
+    # Камера закреплена: правая кнопка мыши вращает сами фигуры (см. SyncRotator),
+    # иначе фигуры поменялись бы местами и ушли со своих кнопок.
+    rig.view((0, 0, -24), 0, interactive=False)
     return MatchingGameScreen(manager, level)
+
+
+def open_projection(level="easy"):
+    rig.view((0, 0, -24), 0, interactive=False)
+    return ProjectionGameScreen(manager, level)
 
 
 def open_results(session):
@@ -94,6 +104,7 @@ def open_progress():
 manager.register("menu", open_menu)
 manager.register("rotation", open_rotation)
 manager.register("matching", open_matching)
+manager.register("projection", open_projection)
 manager.register("results", open_results)
 manager.register("statistics", open_statistics)
 manager.register("progress", open_progress)

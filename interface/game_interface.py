@@ -25,13 +25,13 @@ PANEL_RIGHT = PANEL_X + PANEL_WIDTH / 2 - 0.03
 
 
 def make_floor():
-    """Тёмный пол с тонкой сеткой - чтобы было видно, где «низ».
-    Пол без освещения (unlit): шейдер с тенями сильно осветляет тёмные
-    цвета, и пол становился серым."""
-    floor = Entity(model="plane", scale=14, y=-0.85, color=color.hex(settings.FLOOR_COLOR),
-                   shader=unlit_shader)
-    Entity(parent=floor, model=Grid(14, 14), rotation_x=90, y=0.001,
-           color=color.hex(settings.ACCENT).tint(-0.55), shader=unlit_shader)
+    """Пол - только полупрозрачная сетка, без сплошной заливки: так он мягко
+    уходит в фоновое свечение и не обрывается резкой линией горизонта.
+    Без освещения (unlit), чтобы цвет линий был ровно таким, как задан."""
+    accent = color.hex(settings.ACCENT)
+    floor = Entity(y=-0.85)
+    Entity(parent=floor, model=Grid(30, 30), rotation_x=90, scale=30,
+           color=color.rgba(accent.r, accent.g, accent.b, 0.14), shader=unlit_shader)
     return floor
 
 
@@ -52,7 +52,7 @@ class RotationGameScreen(BaseScreen):
         self.own(make_floor())
         self.cube = self.own(ColoredCube(scale=1.6))   # в центре: вокруг него вращается камера
 
-        self.top_bar = self.own(TopBar("Вращение куба", self.go_back,
+        self.top_bar = self.own(TopBar("rotation", self.go_back,
                                        settings.SESSION_LENGTH))
 
         left = window.top_left.x + 0.05

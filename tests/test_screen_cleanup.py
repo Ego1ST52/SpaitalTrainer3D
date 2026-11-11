@@ -33,6 +33,7 @@ def manager(app):
     from interface.statistics_screen import StatisticsScreen
     from interface.game_interface import RotationGameScreen
     from interface.matching_interface import MatchingGameScreen
+    from interface.projection_interface import ProjectionGameScreen
 
     m = SceneManager()
     m.register("menu", lambda: MainMenu(m))
@@ -40,6 +41,7 @@ def manager(app):
     m.register("statistics", lambda: StatisticsScreen(m, HISTORY))
     m.register("rotation", lambda: RotationGameScreen(m))
     m.register("matching", lambda: MatchingGameScreen(m))
+    m.register("projection", lambda: ProjectionGameScreen(m))
     m.go("menu")
     app.step()
     yield m
@@ -47,7 +49,7 @@ def manager(app):
     app.step()
 
 
-@pytest.mark.parametrize("screen", ["progress", "statistics", "rotation", "matching"])
+@pytest.mark.parametrize("screen", ["progress", "statistics", "rotation", "matching", "projection"])
 def test_screen_leaves_nothing_behind(app, manager, screen):
     before = count_entities()
     manager.go(screen)
@@ -69,3 +71,22 @@ def test_progress_filters_do_not_leak(app, manager):
     manager.go("menu")
     app.step()
     assert count_entities() == before
+
+
+def test_matching_shape_can_be_clicked(app, manager):
+    """Клик по самой 3D-фигуре засчитывается как выбор этого варианта."""
+    from ursina import mouse
+
+    manager.go("matching")
+    app.step()
+    screen = manager._current
+    target = 1
+    cube = screen.option_views[target].cubes[0]
+    assert cube.collider is not None          # без коллайдера мышь его не «увидит»
+    # Окно без экрана не умеет двигать курсор, поэтому говорим напрямую,
+    # какой кубик под курсором (так делает Ursina каждый кадр).
+    mouse.hovered_entity = cube
+    assert screen._option_under_mouse() == target
+    screen.input("left mouse down")
+    assert screen.answered
+    assert screen.session.results[-1].correct == (target == screen.task.correct_index)

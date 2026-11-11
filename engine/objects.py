@@ -92,19 +92,25 @@ class ShapeView(Entity):
     """Фигура из кубиков по набору клеток (см. logic/shapes.py).
     Фигура центрируется относительно своей позиции."""
 
-    def __init__(self, cells, cube_color, **kwargs):
+    def __init__(self, cells, cube_color, clickable=False, **kwargs):
         super().__init__(**kwargs)
+        self.cubes = []
         max_x = max(c[0] for c in cells)
         max_y = max(c[1] for c in cells)
         max_z = max(c[2] for c in cells)
         for x, y, z in cells:
-            Entity(parent=self, model="cube", color=color.hex(cube_color),
-                   position=(x - max_x / 2, y - max_y / 2, z - max_z / 2),
-                   scale=0.94)
+            # collider нужен, чтобы по кубику можно было кликнуть мышью
+            self.cubes.append(Entity(parent=self, model="cube", color=color.hex(cube_color),
+                                     position=(x - max_x / 2, y - max_y / 2, z - max_z / 2),
+                                     scale=0.94, collider="box" if clickable else None))
 
     def set_color(self, hex_color):
-        for child in self.children:
-            child.color = color.hex(hex_color)
+        for cube in self.cubes:
+            cube.color = color.hex(hex_color)
+
+    def contains(self, entity):
+        """Принадлежит ли entity (например, кубик под курсором) этой фигуре."""
+        return entity in self.cubes
 
 
 def dispose(entity):

@@ -1,6 +1,10 @@
 from ursina import *
+from ursina.shaders import unlit_shader
 
+from core import settings
 from engine.objects import dispose
+
+FADE_SECONDS = 0.35
 
 
 class BaseScreen(Entity):
@@ -11,6 +15,11 @@ class BaseScreen(Entity):
         super().__init__()
         self.manager = manager
         self._owned = []
+        # Экран плавно проявляется: поверх всего лежит тёмная пелена,
+        # которая за FADE_SECONDS становится прозрачной.
+        veil = self.own(Entity(parent=camera.ui, model="quad", scale=(4, 2), z=-0.9,
+                               color=color.hex(settings.BACKGROUND), shader=unlit_shader))
+        veil.fade_out(duration=FADE_SECONDS)
 
     def own(self, obj):
         self._owned.append(obj)

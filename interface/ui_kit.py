@@ -27,34 +27,57 @@ TONES = {
 FRONT = -0.01
 
 
-def rounded_quad(width, height, radius):
-    """Прямоугольник со скруглёнными углами. radius - в экранных единицах."""
+def mode_color(mode):
+    """Яркий цвет режима (у каждого режима свой)."""
+    return settings.MODE_COLORS[mode][0]
+
+
+def mode_dim(mode):
+    """Тёмная подложка в цвете режима."""
+    return settings.MODE_COLORS[mode][1]
+
+
+def with_alpha(hex_color, alpha):
+    c = color.hex(hex_color)
+    return color.rgba(c.r, c.g, c.b, alpha)
+
+
+def rounded_quad(width, height, radius, outline=False):
+    """Прямоугольник со скруглёнными углами (radius - в экранных единицах).
+    outline=True - только контур (рамка), без заливки."""
+    if outline:
+        return Quad(radius=min(radius / height, 0.5), aspect=width / height,
+                    mode="line", thickness=1.5)
     return Quad(radius=min(radius / height, 0.5), aspect=width / height)
 
 
 def label(text, position, size=1.0, tone="text", origin=(-0.5, 0), parent=None):
-    """Надпись. tone - один из ключей TONES. origin (-0.5, 0) - выравнивание
-    по левому краю, (0, 0) - по центру."""
+    """Надпись. tone - ключ из TONES или цвет '#rrggbb'. origin (-0.5, 0) -
+    выравнивание по левому краю, (0, 0) - по центру, (0.5, 0) - по правому."""
     x, y = position
+    hex_color = TONES.get(tone, tone)
     return Text(text, parent=parent or camera.ui, position=(x, y, FRONT),
-                scale=size, origin=origin, color=color.hex(TONES[tone]))
+                scale=size, origin=origin, color=color.hex(hex_color))
 
 
 class Panel(Entity):
-    """Скруглённая подложка с тонкой рамкой."""
+    """Полупрозрачная («стеклянная») подложка с тонкой рамкой
+    и светлой кромкой сверху."""
 
     def __init__(self, width, height, position=(0, 0), fill=settings.SURFACE,
-                 border=settings.BORDER, radius=0.018, parent=None):
+                 border=settings.BORDER, radius=0.018, alpha=settings.SURFACE_ALPHA,
+                 parent=None):
         super().__init__(parent=parent or camera.ui, position=position)
-        if border:
-            edge = 0.003
-            Entity(parent=self, model=rounded_quad(width + 2 * edge, height + 2 * edge,
-                                                   radius + edge),
-                   scale=(width + 2 * edge, height + 2 * edge),
-                   color=color.hex(border), shader=unlit_shader, z=0.002)
         Entity(parent=self, model=rounded_quad(width, height, radius),
-               scale=(width, height), color=color.hex(fill),
-               shader=unlit_shader, z=0.001)
+               scale=(width, height), color=with_alpha(fill, alpha),
+               shader=unlit_shader, z=0.002)
+        if border:
+            Entity(parent=self, model=rounded_quad(width, height, radius, outline=True),
+                   scale=(width, height), color=color.hex(border),
+                   shader=unlit_shader, z=0.001)
+            Entity(parent=self, model="quad", shader=unlit_shader,
+                   position=(0, height / 2 - 0.0015, 0.0005),
+                   scale=(width - 2 * radius, 0.0015), color=color.hex(settings.EDGE_LIGHT))
 
 
 class UIButton(Button):
@@ -72,9 +95,9 @@ class UIButton(Button):
     }
 
     def __init__(self, text, on_click, position=(0, 0), scale=(0.3, 0.065),
-                 variant="secondary", parent=None, text_size=0.9, swatch=None):
+                 variant="secondary", parent=None, text_size=0.9, swatch=None, radius=0.3):
         super().__init__(text=text, parent=parent or camera.ui, position=position,
-                         scale=scale, radius=0.3, text_size=text_size)
+                         scale=scale, radius=radius, text_size=text_size)
         self.on_click = on_click
         self.set_variant(variant)
         if swatch:
@@ -99,59 +122,93 @@ class UIButton(Button):
         self.model.setColorScale(self.highlight_color if self.hovered else self.color)
 
 
-def _draw_icon(kind, parent):
+class LogoMark(Entity):
+    """Фирменный знак: изометрический кубик из трёх граней."""
+
+    def __init__(self, position, size=0.045, parent=None):
+        super().__init__(parent=parent or camera.ui, position=position)
+        r = size / 2
+        w = r * 0.866           # cos(30°)
+        top, center, bottom = Vec3(0, r, 0), Vec3(0, 0, 0), Vec3(0, -r, 0)
+        up_left, up_right = Vec3(-w, r / 2, 0), Vec3(w, r / 2, 0)
+        low_left, low_right = Vec3(-w, -r / 2, 0), Vec3(w, -r / 2, 0)
+        faces = [
+            ((top, up_right, center, up_left), "#e0f7fb"),           # верх
+            ((up_left, center, bottom, low_left), settings.ACCENT),  # левая
+            ((center, up_right, low_right, bottom), "#0e7490"),      # правая
+        ]
+        for corners, hex_color in faces:
+            Entity(parent=self, shader=unlit_shader, double_sided=True,
+                   model=Mesh(vertices=list(corners), triangles=[(0, 1, 2), (0, 2, 3)]),
+                   color=color.hex(hex_color), z=FRONT)
+
+
+def _draw_icon(kind, parent, hex_color):
     """Простые иконки из фигур (в шрифте нет нужных символов)."""
-    accent = color.hex(settings.ACCENT)
+    tint = color.hex(hex_color)
     if kind == "rotation":
-        label("90°", (0, 0), 1.05, "accent", origin=(0, 0), parent=parent)
+        label("90°", (0, 0), 1.05, hex_color, origin=(0, 0), parent=parent)
     elif kind == "matching":
         # Две одинаковые фигуры, одна повёрнута
         Entity(parent=parent, model="quad", scale=0.022, position=(-0.013, 0, FRONT),
-               color=accent, shader=unlit_shader)
+               color=tint, shader=unlit_shader)
         Entity(parent=parent, model="quad", scale=0.022, position=(0.014, 0, FRONT),
-               rotation_z=45, color=accent, shader=unlit_shader)
+               rotation_z=45, color=tint, shader=unlit_shader)
+    elif kind == "projection":
+        # Плоская «тень» фигуры: три клетки уголком
+        for cx, cy in ((-0.011, -0.011), (0.011, -0.011), (-0.011, 0.011)):
+            Entity(parent=parent, model="quad", scale=0.019, position=(cx, cy, FRONT),
+                   color=tint, shader=unlit_shader)
 
 
 class ModeCard(Entity):
-    """Карточка режима: иконка, название, описание. При наведении
-    подсвечивается рамка и карточка немного сдвигается вправо."""
+    """Карточка режима: номер, иконка, название, описание. При наведении
+    рамка и полоска слева загораются цветом режима, карточка сдвигается.
+    appear_delay - карточки выезжают по очереди при открытии меню."""
 
-    def __init__(self, title, subtitle, icon, on_click, position,
-                 width=0.62, height=0.115, parent=None):
+    def __init__(self, number, title, subtitle, mode, on_click, position,
+                 width=0.62, height=0.105, appear_delay=0.0, parent=None):
         super().__init__(parent=parent or camera.ui, position=position)
         self.home_x = position[0]
+        self.x = self.home_x - 0.06              # старт чуть левее - «выезд»
+        self.appear_at = time.time() + appear_delay
+        self.accent = color.hex(mode_color(mode))
         radius = 0.02
-        edge = 0.003
 
-        self.border = Entity(parent=self, model=rounded_quad(width + 2 * edge,
-                                                             height + 2 * edge,
-                                                             radius + edge),
-                             scale=(width + 2 * edge, height + 2 * edge),
-                             color=color.hex(settings.BORDER),
-                             shader=unlit_shader, z=0.002)
         self.button = Button(parent=self, scale=(width, height), radius=radius / height,
-                             color=color.hex(settings.SURFACE),
+                             color=with_alpha(settings.SURFACE, settings.SURFACE_ALPHA),
                              highlight_color=color.hex(settings.SURFACE_HOVER),
-                             pressed_color=color.hex(settings.SURFACE_HOVER),
-                             z=0.001)
+                             pressed_color=color.hex(settings.SURFACE_HOVER), z=0.002)
         self.button.on_click = on_click
+        self.border = Entity(parent=self, model=rounded_quad(width, height, radius, True),
+                             scale=(width, height), color=color.hex(settings.BORDER),
+                             shader=unlit_shader, z=0.001)
+        self.bar = Entity(parent=self, model=rounded_quad(0.006, height * 0.55, 0.003),
+                          scale=(0.006, height * 0.55), position=(-width / 2 + 0.01, 0, FRONT),
+                          color=self.accent, shader=unlit_shader, enabled=False)
 
-        icon_x = -width / 2 + 0.018 + 0.038
-        Panel(0.076, 0.076, position=(icon_x, 0, FRONT / 2), fill=settings.ACCENT_DIM,
-              border=None, radius=0.016, parent=self)
+        label(number, (-width / 2 + 0.03, 0), 0.8, "muted", parent=self)
+        icon_x = -width / 2 + 0.11
+        Panel(0.07, 0.07, position=(icon_x, 0, FRONT / 2), fill=mode_dim(mode),
+              border=None, radius=0.016, alpha=1, parent=self)
         icon_holder = Entity(parent=self, position=(icon_x, 0))
-        _draw_icon(icon, icon_holder)
+        _draw_icon(mode, icon_holder, mode_color(mode))
 
-        text_x = icon_x + 0.06
-        label(title, (text_x, 0.017), 1.15, "strong", parent=self)
-        label(subtitle, (text_x, -0.022), 0.85, "muted", parent=self)
-        label("›", (width / 2 - 0.035, 0.004), 2.2, "accent", origin=(0, 0), parent=self)
+        text_x = icon_x + 0.055
+        label(title, (text_x, 0.016), 1.1, "strong", parent=self)
+        label(subtitle, (text_x, -0.02), 0.8, "muted", parent=self)
+        self.chevron = label("›", (width / 2 - 0.035, 0.004), 2.0, "muted",
+                             origin=(0, 0), parent=self)
 
     def update(self):
+        if time.time() < self.appear_at:
+            return
         hovered = self.button.hovered
         target = self.home_x + (0.012 if hovered else 0)
-        self.x = lerp(self.x, target, min(1, time.dt * 12))
-        self.border.color = color.hex(settings.ACCENT if hovered else settings.BORDER)
+        self.x = lerp(self.x, target, min(1, time.dt * 10))
+        self.border.color = self.accent if hovered else color.hex(settings.BORDER)
+        self.chevron.color = self.accent if hovered else color.hex(settings.TEXT_MUTED)
+        self.bar.enabled = hovered
 
 
 class Segmented(Entity):
@@ -159,11 +216,11 @@ class Segmented(Entity):
     options: [(ключ, подпись), ...]; on_change(ключ) вызывается при выборе."""
 
     def __init__(self, options, selected, on_change, position,
-                 width=0.62, height=0.062, parent=None):
+                 width=0.62, height=0.062, parent=None, text_size=0.85):
         super().__init__(parent=parent or camera.ui, position=position)
         self.on_change = on_change
         self.buttons = {}
-        Panel(width, height, fill=settings.SURFACE, radius=height * 0.3, parent=self)
+        Panel(width, height, radius=height * 0.3, parent=self)
 
         pad = 0.006
         count = len(options)
@@ -173,7 +230,7 @@ class Segmented(Entity):
             self.buttons[key] = UIButton(text, lambda k=key: self.select(k),
                                          position=(x, 0, FRONT / 2),
                                          scale=(segment, height - 2 * pad),
-                                         variant="ghost", parent=self, text_size=0.85)
+                                         variant="ghost", parent=self, text_size=text_size)
         self.select(selected, notify=False)
 
     def select(self, key, notify=True):
@@ -188,21 +245,25 @@ class TopBar(Entity):
     """Верхняя панель игрового экрана: режим и уровень слева, полоска
     прогресса по центру, баллы и кнопка «В меню» справа."""
 
-    def __init__(self, title, on_back, length, parent=None):
+    def __init__(self, mode, on_back, length, parent=None):
         super().__init__(parent=parent or camera.ui)
         left = window.top_left.x + 0.05
         right = window.top_right.x - 0.05
         self.length = length
+        self.accent = mode_color(mode)
 
-        label(title, (left, 0.445), 1.3, "strong", parent=self)
-        self.level_text = label("", (left, 0.405), 0.8, "muted", parent=self)
+        Entity(parent=self, model=rounded_quad(0.006, 0.05, 0.003), scale=(0.006, 0.05),
+               position=(left, 0.43, FRONT), color=color.hex(self.accent),
+               shader=unlit_shader)
+        label(settings.MODE_NAMES[mode], (left + 0.02, 0.445), 1.3, "strong", parent=self)
+        self.level_text = label("", (left + 0.02, 0.408), 0.8, "muted", parent=self)
 
         self.progress_text = label("", (0, 0.452), 0.8, "muted", origin=(0, 0),
                                    parent=self)
         self.segments_holder = Entity(parent=self, position=(0, 0.418))
 
         label("Баллы", (right - 0.32, 0.452), 0.8, "muted", parent=self)
-        self.points_text = label("0", (right - 0.32, 0.415), 1.3, "accent", parent=self)
+        self.points_text = label("0", (right - 0.32, 0.415), 1.3, self.accent, parent=self)
         UIButton("В меню", on_back, position=(right - 0.09, 0.43),
                  scale=(0.18, 0.055), variant="ghost", parent=self)
 
@@ -222,7 +283,7 @@ class TopBar(Entity):
             if i < len(results):
                 hex_color = settings.CORRECT_COLOR if results[i].correct else settings.WRONG_COLOR
             elif i == len(results):
-                hex_color = settings.ACCENT       # текущее задание
+                hex_color = self.accent           # текущее задание
             else:
                 hex_color = settings.BORDER       # ещё впереди
             Entity(parent=self.segments_holder, model="quad", shader=unlit_shader,
@@ -236,7 +297,7 @@ class StatTile(Entity):
     def __init__(self, caption, value, position, width=0.26, height=0.1,
                  tone="strong", parent=None):
         super().__init__(parent=parent or camera.ui, position=position)
-        Panel(width, height, fill=settings.SURFACE, border=None, radius=0.016, parent=self)
+        Panel(width, height, radius=0.016, parent=self)
         left = -width / 2 + 0.02
         label(caption, (left, 0.022), 0.8, "muted", parent=self)
         self.value = label(value, (left, -0.016), 1.35, tone, parent=self)

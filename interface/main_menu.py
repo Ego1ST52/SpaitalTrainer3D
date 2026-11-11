@@ -2,11 +2,19 @@ from ursina import *
 
 from core import settings
 from data.statistics import summarize
+from engine.backdrop import FloatingCubes
 from engine.objects import ColoredCube
 from interface.base_screen import BaseScreen
-from interface.ui_kit import label, ModeCard, Segmented, UIButton, StatTile
+from interface.ui_kit import label, LogoMark, ModeCard, Segmented, UIButton, StatTile
 
 LEVELS = [("easy", "Начальный"), ("medium", "Средний"), ("hard", "Продвинутый")]
+
+# Режимы: (номер, ключ, название, описание)
+MODES = [
+    ("01", "rotation", "Вращение куба", "Какая грань окажется сверху"),
+    ("02", "matching", "Одинаковые фигуры", "Найдите фигуру после поворота"),
+    ("03", "projection", "Проекции", "Как фигура выглядит с разных сторон"),
+]
 
 # Левая колонка меню: левый край и центр
 COLUMN_LEFT = -0.74
@@ -24,26 +32,27 @@ class MainMenu(BaseScreen):
     def __init__(self, manager, history=None):
         super().__init__(manager)
         self.level = MainMenu.remembered_level
+        self.own(FloatingCubes())
 
+        self.own(LogoMark((COLUMN_LEFT + 0.022, 0.4)))
         self.own(label("Тренажёр пространственного мышления",
-                       (COLUMN_LEFT, 0.37), 0.95, "accent"))
-        self.own(label("Spatial Trainer 3D", (COLUMN_LEFT, 0.31), 2.5, "strong"))
+                       (COLUMN_LEFT + 0.06, 0.4), 0.9, "accent"))
+        self.own(label("Spatial Trainer 3D", (COLUMN_LEFT, 0.335), 2.6, "strong"))
 
-        self.own(ModeCard("Вращение куба", "Какая грань окажется сверху",
-                          "rotation", lambda: self.start("rotation"),
-                          position=(COLUMN_CENTER, 0.17), width=COLUMN_WIDTH))
-        self.own(ModeCard("Одинаковые фигуры", "Найдите фигуру после поворота",
-                          "matching", lambda: self.start("matching"),
-                          position=(COLUMN_CENTER, 0.035), width=COLUMN_WIDTH))
+        for i, (number, mode, title, subtitle) in enumerate(MODES):
+            self.own(ModeCard(number, title, subtitle, mode,
+                              lambda m=mode: self.start(m),
+                              position=(COLUMN_CENTER, 0.2 - i * 0.12),
+                              width=COLUMN_WIDTH, appear_delay=0.08 * i))
 
-        self.own(label("Сложность", (COLUMN_LEFT, -0.075), 0.85, "muted"))
+        self.own(label("Сложность", (COLUMN_LEFT, -0.135), 0.8, "muted"))
         self.own(Segmented(LEVELS, self.level, self.set_level,
-                           position=(COLUMN_CENTER, -0.125), width=COLUMN_WIDTH))
+                           position=(COLUMN_CENTER, -0.18), width=COLUMN_WIDTH))
 
         self.own(UIButton("Статистика", lambda: self.navigate("statistics"),
-                          position=(COLUMN_LEFT + 0.11, -0.235), scale=(0.22, 0.06)))
+                          position=(COLUMN_LEFT + 0.11, -0.28), scale=(0.22, 0.06)))
         self.own(UIButton("Выход", application.quit, variant="ghost",
-                          position=(COLUMN_LEFT + 0.31, -0.235), scale=(0.15, 0.06)))
+                          position=(COLUMN_LEFT + 0.31, -0.28), scale=(0.15, 0.06)))
 
         # Справа - медленно вращающийся куб (3D-объект в сцене)
         self.cube = self.own(ColoredCube(position=(3.7, 0.9, 0), scale=2.3))

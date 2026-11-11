@@ -1,11 +1,12 @@
-import math
 from time import perf_counter
 
 from ursina import *
 
 from core import settings
+from engine.controls import SyncRotator
 from engine.objects import ShapeView, dispose
 from interface.base_screen import BaseScreen
+from interface.layout3d import ui_to_world, fit_scale
 from interface.ui_kit import label, TopBar, UIButton
 from logic.matching_tasks import MatchingTaskGenerator
 from logic.answer_checker import check_answer
@@ -14,60 +15,39 @@ from logic.session import TrainingSession
 LEVEL_KEYS = {"1": "easy", "2": "medium", "3": "hard"}
 LETTERS = "АБВГД"
 
-# Камера стоит в (0, 0, -24) и смотрит прямо (см. main.py).
-CAMERA_DISTANCE = 24
-
 OPTION_SPACING_UI = 0.28     # расстояние между вариантами на экране
 OPTIONS_Y_UI = -0.13         # где на экране стоят варианты
 REFERENCE_Y_UI = 0.14        # где на экране стоит образец
-OPTION_MAX_SIZE = 2.1        # наибольший размер варианта (единицы сцены)
-REFERENCE_MAX_SIZE = 2.9
-
-# Общий наклон всех фигур, чтобы был виден объём. Он одинаковый для образца
-# и вариантов, поэтому на правильный ответ не влияет.
-VIEW_ROTATION = (22, -32, 0)
-
-
-def ui_to_world(ui_x, ui_y):
-    """Экранная точка -> точка сцены в плоскости z = 0 (где стоят фигуры).
-    Так 3D-фигура встаёт точно над своей кнопкой интерфейса.
-    camera.fov - горизонтальный угол обзора, ширина экрана в единицах
-    интерфейса равна window.aspect_ratio."""
-    visible_width = 2 * CAMERA_DISTANCE * math.tan(math.radians(camera.fov / 2))
-    units_per_ui = visible_width / window.aspect_ratio
-    return ui_x * units_per_ui, ui_y * units_per_ui, 0
-
-
-def fit_scale(cells, max_size):
-    """Масштаб, при котором фигура не больше max_size по любой оси."""
-    extent = max(max(c[i] for c in cells) - min(c[i] for c in cells) + 1
-                 for i in range(3))
-    return min(1.0, max_size / extent)
+OPTION_MAX_SIZE = 1.7        # наибольший размер варианта (единицы сцены)
+REFERENCE_MAX_SIZE = 2.4
 
 
 class MatchingGameScreen(BaseScreen):
-    """Игровой экран режима 2: найти фигуру, совпадающую с образцом."""
+    """Игровой экран режима 2: найти фигуру, совпадающую с образцом.
+    Ответить можно кнопкой с буквой или кликом по самой фигуре."""
 
     def __init__(self, manager, level="easy"):
         super().__init__(manager)
         self.generator = MatchingTaskGenerator()
         self.session = self._new_session(level)
+        self.rotator = SyncRotator()
         self.task = None
         self.task_started = 0.0
         self.answered = False
+        self.hovered_index = None
         self.task_objects = []    # всё, что пересоздаётся для каждого задания
         self.option_views = []
         self.option_buttons = []
 
-        self.top_bar = self.own(TopBar("Одинаковые фигуры", self.go_back,
-                                       settings.SESSION_LENGTH))
+        self.top_bar = self.own(TopBar("matching", self.go_back, settings.SESSION_LENGTH))
         self.own(label("Какая из фигур совпадает с образцом после поворота?",
                        (0, 0.345), 1.05, "strong", origin=(0, 0)))
         self.own(label("Образец", (0, 0.3), 0.8, "muted", origin=(0, 0)))
-        self.own(label("Правая кнопка мыши - осмотреть фигуры, колесо - приблизить",
+        self.own(label("Правая кнопка мыши - повернуть все фигуры сразу  •  "
+                       "R - исходный вид  •  клик по фигуре - ответ",
                        (window.top_left.x + 0.05, -0.455), 0.8, "muted"))
 
-        self.feedback = self.own(label("", (0, -0.43), 1.0, origin=(0, 0)))
+        self.feedback = self.own(label("", (0, -0.4), 1.0, origin=(0, 0)))
         self.next_button = self.own(UIButton("Дальше", self.next_task,
                                              position=(window.top_right.x - 0.15, -0.43),
                                              scale=(0.2, 0.06), variant="primary"))
@@ -83,31 +63,36 @@ class MatchingGameScreen(BaseScreen):
         self.option_views = []
         self.option_buttons = []
 
-    def _shape(self, cells, ui_x, ui_y, max_size):
-        view = ShapeView(cells, settings.SHAPE_COLOR,
+    def _shape(self, cells, ui_x, ui_y, max_size, clickable):
+        view = ShapeView(cells, settings.SHAPE_COLOR, clickable=clickable,
                          position=ui_to_world(ui_x, ui_y),
-                         rotation=VIEW_ROTATION, scale=fit_scale(cells, max_size))
+                         scale=fit_scale(cells, max_size))
         self.task_objects.append(view)
         return view
 
     def new_task(self):
         self.task = self.generator.generate(self.session.level)
         self.answered = False
+        self.hovered_index = None
         self.task_started = perf_counter()
         self.next_button.text = "Дальше"
         self._clear_task_objects()
 
-        self._shape(self.task.reference, 0, REFERENCE_Y_UI, REFERENCE_MAX_SIZE)
+        reference = self._shape(self.task.reference, 0, REFERENCE_Y_UI,
+                                REFERENCE_MAX_SIZE, clickable=False)
 
         count = len(self.task.options)
         for index, cells in enumerate(self.task.options):
             ui_x = (index - (count - 1) / 2) * OPTION_SPACING_UI
             self.option_views.append(
-                self._shape(cells, ui_x, OPTIONS_Y_UI, OPTION_MAX_SIZE))
+                self._shape(cells, ui_x, OPTIONS_Y_UI, OPTION_MAX_SIZE, clickable=True))
             self.option_buttons.append(
                 UIButton(LETTERS[index], lambda i=index: self.choose(i),
                          position=(ui_x, -0.33), scale=(0.12, 0.06)))
 
+        # Каждая фигура вращается вокруг своего центра, все - одинаково
+        self.rotator.set_targets([reference] + self.option_views)
+        self.rotator.reset()
         self.feedback.text = ""
         self._update_status()
 
@@ -128,6 +113,8 @@ class MatchingGameScreen(BaseScreen):
         points = self.session.record(correct, seconds)
 
         right = self.task.correct_index
+        for view in self.option_views:
+            view.set_color(settings.SHAPE_COLOR)      # снимаем подсветку наведения
         self.option_views[right].set_color(settings.CORRECT_COLOR)
         self.option_buttons[right].set_variant("correct")
         if correct:
@@ -146,6 +133,23 @@ class MatchingGameScreen(BaseScreen):
         s = self.session
         self.top_bar.update_state(s.level, s.results, self.answered, s.points)
 
+    def _option_under_mouse(self):
+        """Номер варианта, над которым курсор, или None."""
+        for index, view in enumerate(self.option_views):
+            if view.contains(mouse.hovered_entity):
+                return index
+        return None
+
+    def update(self):
+        self.rotator.update()
+        if self.answered:
+            return
+        index = self._option_under_mouse()
+        if index != self.hovered_index:
+            for i, view in enumerate(self.option_views):
+                view.set_color(settings.SHAPE_HOVER if i == index else settings.SHAPE_COLOR)
+            self.hovered_index = index
+
     def go_back(self):
         self.navigate("menu")
 
@@ -157,3 +161,9 @@ class MatchingGameScreen(BaseScreen):
         if key in LEVEL_KEYS:
             self.session = self._new_session(LEVEL_KEYS[key])  # заново
             self.new_task()
+        elif key == "r":
+            self.rotator.reset()
+        elif key == "left mouse down":
+            index = self._option_under_mouse()
+            if index is not None:
+                self.choose(index)

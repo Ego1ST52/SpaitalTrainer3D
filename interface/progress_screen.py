@@ -7,7 +7,8 @@ from engine.objects import dispose
 from interface.base_screen import BaseScreen
 from interface.ui_kit import FRONT, label, Panel, Segmented, UIButton
 
-MODES = [(None, "Все"), ("rotation", "Вращение"), ("matching", "Фигуры")]
+MODES = [(None, "Все"), ("rotation", "Вращение"), ("matching", "Фигуры"),
+         ("projection", "Проекции")]
 LEVELS = [(None, "Все"), ("easy", "Начальный"), ("medium", "Средний"),
           ("hard", "Продвинутый")]
 
@@ -50,10 +51,12 @@ class ProgressScreen(BaseScreen):
 
         self.own(label("Режим", (-0.81, 0.27), 0.8, "muted"))
         self.mode_switch = self.own(Segmented(MODES, None, self.set_mode,
-                                              position=(-0.48, 0.22), width=0.66))
-        self.own(label("Уровень", (-0.05, 0.27), 0.8, "muted"))
+                                              position=(-0.42, 0.22), width=0.78,
+                                              text_size=0.8))
+        self.own(label("Уровень", (0.03, 0.27), 0.8, "muted"))
         self.level_switch = self.own(Segmented(LEVELS, None, self.set_level,
-                                               position=(0.38, 0.22), width=0.86))
+                                               position=(0.42, 0.22), width=0.78,
+                                               text_size=0.8))
         self.own(Panel(1.62, 0.5, position=(0, -0.1)))
         self.refresh()
 
