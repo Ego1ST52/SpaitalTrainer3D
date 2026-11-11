@@ -6,6 +6,7 @@ from ursina.lights import DirectionalLight, AmbientLight
 from ursina.shaders import lit_with_shadows_shader
 
 from core import settings
+from core.fonts import setup_input_font
 from core.preferences import prefs
 from core.scene_manager import SceneManager
 from data.database import Database
@@ -33,6 +34,9 @@ window.editor_ui.enabled = settings.SHOW_FPS
 
 if os.path.exists(settings.FONT_PATH):
     Text.default_font = settings.FONT_PATH
+# Поля ввода (имя игрока, код) рисуются моноширинным шрифтом; встроенный в
+# Ursina не знает русских букв, поэтому берём подходящий шрифт из Windows
+setup_input_font()
 
 Entity.default_shader = lit_with_shadows_shader
 

@@ -61,7 +61,8 @@ class ProfilesScreen(BaseScreen):
                        (-0.25, -0.195), 0.75, "muted"))
         self.name_field = self.own(InputField(position=(-0.12, -0.26, FRONT * 2),
                                               scale=(0.5, 0.06), character_limit=20,
-                                              color=color.hex(settings.BUTTON_COLOR)))
+                                              color=color.hex(settings.BUTTON_COLOR),
+                                              active=True))    # печатать можно сразу
         self.name_field.submit_on = ["enter"]
         self.name_field.on_submit = self.create
         self.own(UIButton("Создать", self.create, position=(0.29, -0.26),
