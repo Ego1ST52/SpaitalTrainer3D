@@ -55,7 +55,7 @@ def load_history():
 
 
 def open_menu():
-    rig.view((0, 0, -20), 0)
+    rig.view((0, 0, -20), 0, interactive=False)
     return MainMenu(manager, load_history())
 
 
@@ -77,17 +77,17 @@ def open_results(session):
             saved = True
         except (sqlite3.Error, ValueError) as error:
             print("Не удалось сохранить результат:", error)
-    rig.view((0, 0, -20), 0)
+    rig.view((0, 0, -20), 0, interactive=False)
     return ResultsScreen(manager, session, saved)
 
 
 def open_statistics():
-    rig.view((0, 0, -20), 0)
+    rig.view((0, 0, -20), 0, interactive=False)
     return StatisticsScreen(manager, load_history())
 
 
 def open_progress():
-    rig.view((0, 0, -20), 0)
+    rig.view((0, 0, -20), 0, interactive=False)
     return ProgressScreen(manager, load_history())
 
 

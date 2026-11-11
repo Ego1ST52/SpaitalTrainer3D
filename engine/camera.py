@@ -4,12 +4,22 @@ from ursina import *
 class CameraRig:
     """Камера: правая кнопка мыши вращает, колесо приближает."""
 
+    ROTATION_SPEED = 200
+    ZOOM_SPEED = 1.25
+    PAN_SPEED = Vec2(5, 5)
+
     def __init__(self):
         self.control = EditorCamera()
         self.control.move_speed = 0
 
-    def view(self, position, pitch):
-        """Поставить камеру в начальный ракурс."""
+    def view(self, position, pitch, interactive=True):
+        """Поставить камеру в начальный ракурс.
+        interactive=False - камера закреплена (меню и прочие экраны с
+        интерфейсом): иначе 3D-объекты уезжают под кнопки camera.ui."""
+        self.control.ignore_input = not interactive
+        self.control.rotation_speed = self.ROTATION_SPEED if interactive else 0
+        self.control.zoom_speed = self.ZOOM_SPEED if interactive else 0
+        self.control.pan_speed = self.PAN_SPEED if interactive else Vec2(0, 0)
         self.control.position = (0, 0, 0)
         self.control.rotation = Vec3(pitch, 0, 0)
         camera.position = position
