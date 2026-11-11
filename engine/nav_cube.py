@@ -54,7 +54,7 @@ class NavCube(Entity):
 
         # Тёмное ядро куба
         Entity(parent=self.yaw_pivot, model="cube", scale=SIZE * 0.985,
-               color=color.hex("#0a1222"), shader=unlit_shader)
+               color=color.hex(settings.NAV_CORE), shader=unlit_shader)
 
         for face, (direction, rotation) in FACE_PLACES.items():
             # Верх и низ крепим к поясу тоже: куб вращается целиком, как настоящий

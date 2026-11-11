@@ -15,14 +15,22 @@ from ursina.shaders import unlit_shader
 from core import settings
 from core.preferences import prefs
 
+# Тона текста. Цвета читаются из settings в момент создания надписи, а не
+# при запуске программы, - так работает смена темы (см. core/theme.py).
 TONES = {
-    "text": settings.TEXT_COLOR,
-    "strong": settings.TEXT_STRONG,
-    "muted": settings.TEXT_MUTED,
-    "accent": settings.ACCENT,
-    "correct": settings.CORRECT_COLOR,
-    "wrong": settings.WRONG_COLOR,
+    "text": "TEXT_COLOR",
+    "strong": "TEXT_STRONG",
+    "muted": "TEXT_MUTED",
+    "accent": "ACCENT",
+    "correct": "CORRECT_COLOR",
+    "wrong": "WRONG_COLOR",
 }
+_DEFAULT = object()      # «значение по умолчанию из текущей темы»
+
+
+def tone_color(tone):
+    """Ключ из TONES или цвет '#rrggbb' -> '#rrggbb'."""
+    return getattr(settings, TONES[tone]) if tone in TONES else tone
 
 # Текст и иконки рисуем чуть ближе к камере, чем фон, чтобы они не мерцали
 FRONT = -0.01
@@ -56,7 +64,7 @@ def label(text, position, size=1.0, tone="text", origin=(-0.5, 0), parent=None):
     """Надпись. tone - ключ из TONES или цвет '#rrggbb'. origin (-0.5, 0) -
     выравнивание по левому краю, (0, 0) - по центру, (0.5, 0) - по правому."""
     x, y = position
-    hex_color = TONES.get(tone, tone)
+    hex_color = tone_color(tone)
     return Text(text, parent=parent or camera.ui, position=(x, y, FRONT),
                 scale=size, origin=origin, color=color.hex(hex_color))
 
@@ -65,10 +73,12 @@ class Panel(Entity):
     """Полупрозрачная («стеклянная») подложка с тонкой рамкой
     и светлой кромкой сверху."""
 
-    def __init__(self, width, height, position=(0, 0), fill=settings.SURFACE,
-                 border=settings.BORDER, radius=0.018, alpha=settings.SURFACE_ALPHA,
-                 parent=None):
+    def __init__(self, width, height, position=(0, 0), fill=None, border=_DEFAULT,
+                 radius=0.018, alpha=None, parent=None):
         super().__init__(parent=parent or camera.ui, position=position)
+        fill = fill or settings.SURFACE
+        border = settings.BORDER if border is _DEFAULT else border
+        alpha = settings.SURFACE_ALPHA if alpha is None else alpha
         Entity(parent=self, model=rounded_quad(width, height, radius),
                scale=(width, height), color=with_alpha(fill, alpha),
                shader=unlit_shader, z=0.002)
@@ -85,15 +95,17 @@ class UIButton(Button):
     """Кнопка. variant: 'primary' (главное действие на экране, одно),
     'secondary' (обычная) или 'ghost' (тихая, почти без фона)."""
 
-    VARIANTS = {
-        # фон, фон под курсором, цвет текста
-        "primary": (settings.SELECTED_COLOR, "#1590ab", settings.TEXT_STRONG),
-        "secondary": (settings.BUTTON_COLOR, settings.BUTTON_HOVER, settings.TEXT_COLOR),
-        "ghost": (settings.SURFACE, settings.SURFACE_HOVER, settings.TEXT_MUTED),
-        # подсветка ответа после выбора
-        "correct": ("#14532d", "#166534", "#bbf7d0"),
-        "wrong": ("#7f1d1d", "#991b1b", "#fecaca"),
-    }
+    @staticmethod
+    def variants():
+        """Цвета вариантов кнопки из текущей темы: фон, фон под курсором, текст."""
+        return {
+            "primary": (settings.SELECTED_COLOR, settings.SELECTED_HOVER, settings.TEXT_STRONG),
+            "secondary": (settings.BUTTON_COLOR, settings.BUTTON_HOVER, settings.TEXT_COLOR),
+            "ghost": (settings.SURFACE, settings.SURFACE_HOVER, settings.TEXT_MUTED),
+            # подсветка ответа после выбора - не зависит от темы
+            "correct": ("#14532d", "#166534", "#bbf7d0"),
+            "wrong": ("#7f1d1d", "#991b1b", "#fecaca"),
+        }
 
     def __init__(self, text, on_click, position=(0, 0), scale=(0.3, 0.065),
                  variant="secondary", parent=None, text_size=0.9, swatch=None, radius=0.3):
@@ -112,7 +124,7 @@ class UIButton(Button):
                    color=color.hex(swatch), shader=unlit_shader)
 
     def set_variant(self, variant):
-        fill, hover, text_color = self.VARIANTS[variant]
+        fill, hover, text_color = self.variants()[variant]
         self.variant = variant
         self.color = color.hex(fill)
         self.highlight_color = color.hex(hover)
@@ -134,9 +146,9 @@ class LogoMark(Entity):
         up_left, up_right = Vec3(-w, r / 2, 0), Vec3(w, r / 2, 0)
         low_left, low_right = Vec3(-w, -r / 2, 0), Vec3(w, -r / 2, 0)
         faces = [
-            ((top, up_right, center, up_left), "#e0f7fb"),           # верх
-            ((up_left, center, bottom, low_left), settings.ACCENT),  # левая
-            ((center, up_right, low_right, bottom), "#0e7490"),      # правая
+            ((top, up_right, center, up_left), settings.TEXT_STRONG),        # верх
+            ((up_left, center, bottom, low_left), settings.ACCENT),          # левая
+            ((center, up_right, low_right, bottom), settings.SELECTED_COLOR),  # правая
         ]
         for corners, hex_color in faces:
             Entity(parent=self, shader=unlit_shader, double_sided=True,

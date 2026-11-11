@@ -33,14 +33,13 @@ FACE_TEXT = {
     "custom": ("05", "Моя тренировка", "несколько режимов подряд"),
     "hub": ("", "Профиль", ""),
 }
-HUB_COLOR = "#94a3b8"
 KEYS = {"left arrow": "left", "right arrow": "right", "up arrow": "up", "down arrow": "down",
         "a": "left", "d": "right", "w": "up", "s": "down"}
 FLY_SECONDS = 0.32
 
 
 def face_color(content):
-    return HUB_COLOR if content == "hub" else mode_color(content)
+    return settings.HUB_COLOR if content == "hub" else mode_color(content)
 
 
 def trainings_text(count):
@@ -96,7 +95,7 @@ class MainMenu(BaseScreen):
         half = 0.19                     # грань в «единицах интерфейса»: от -0.19 до 0.19
         # Фон грани с коллайдером: по нему кликают мышью
         bg = Entity(parent=content, model=rounded_quad(2 * half, 2 * half, 0.02),
-                    scale=2 * half, color=color.hex("#0e1830"), shader=unlit_shader,
+                    scale=2 * half, color=color.hex(settings.NAV_FACE), shader=unlit_shader,
                     collider="box", z=0.003)
         bg.face_name = face
         border = Entity(parent=content, model=rounded_quad(2 * half, 2 * half, 0.02, True),

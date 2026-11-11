@@ -31,9 +31,9 @@ def goal_line(history, goal):
     today = tasks_on(history, date.today())
     streak = day_streak(history, goal)
     if goal and today >= goal:
-        head = f"цель дня выполнена: {today} заданий"
+        head = "цель дня выполнена"
     elif goal:
-        head = f"сегодня {today} из {goal} заданий"
+        head = f"сегодня {today} из {goal}"
     else:
         head = f"сегодня {today} заданий"
     return f"{head}  •  серия {days_text(streak)}"

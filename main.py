@@ -8,6 +8,7 @@ from ursina.shaders import lit_with_shadows_shader
 from core import settings
 from core.fonts import setup_input_font
 from core.preferences import prefs
+from core.theme import apply_theme
 from core.scene_manager import SceneManager
 from data.database import Database
 from engine.backdrop import Backdrop
@@ -53,6 +54,15 @@ except (sqlite3.Error, OSError) as error:
 
 # Текущий игрок. Его настройки загружаются в prefs (core/preferences.py).
 player = {"id": None, "name": settings.DEFAULT_USER, "color": settings.ACCENT}
+backdrop = None      # фон создаётся ниже; тема перерисовывает и его
+
+
+def apply_current_theme():
+    """Перекрасить интерфейс в тему текущего игрока."""
+    apply_theme(prefs.get("theme"))
+    window.color = color.hex(settings.BACKGROUND)
+    if backdrop is not None:
+        backdrop.refresh()
 
 
 def activate_user(user_id):
@@ -62,6 +72,7 @@ def activate_user(user_id):
             player.update(id=user_id, name=user["name"], color=user["color"])
             break
     prefs.load(db.get_settings(user_id))
+    apply_current_theme()                  # у каждого игрока своя тема
     db.set_state("last_user", user_id)
 
 
@@ -79,7 +90,7 @@ if db is not None:
         print("Не удалось загрузить игрока:", error)
 
 rig = CameraRig()
-Backdrop()   # фон-свечение позади всех объектов
+backdrop = Backdrop()   # фон-свечение позади всех объектов
 manager = SceneManager()
 
 
@@ -103,6 +114,15 @@ def save_preference(key, value):
             db.set_setting(player["id"], key, value)
         except sqlite3.Error as error:
             print("Не удалось сохранить настройку:", error)
+
+
+def change_theme(color_value):
+    """Новая тема из настроек: сохранить, перекрасить и открыть настройки заново,
+    чтобы игрок сразу увидел результат."""
+    save_preference("theme", color_value)
+    apply_current_theme()
+    # Небольшая задержка: нельзя удалять экран прямо во время клика по его кнопке
+    invoke(manager.go, "settings", delay=0.05)
 
 
 def select_user(user_id):
@@ -148,7 +168,8 @@ def open_menu():
 def open_settings():
     menu_view()
     return SettingsScreen(manager, player["name"], save_preference,
-                          unlocked_skins(load_history() or [], prefs.get("daily_goal")))
+                          unlocked_skins(load_history() or [], prefs.get("daily_goal")),
+                          on_theme=change_theme)
 
 
 def open_achievements():

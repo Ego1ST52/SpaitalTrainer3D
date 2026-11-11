@@ -8,6 +8,19 @@
 import copy
 
 from logic.playlist import validate_plan
+from logic.theme import parse_color
+
+
+def _validate_plan_dict(value):
+    if not isinstance(value, dict):
+        raise ValueError("Набор тренировки должен быть словарём")
+    validate_plan(value)
+
+
+def _validate_theme(value):
+    """Тема: "" (стандартная) или цвет '#rrggbb'."""
+    if value != "" and (not isinstance(value, str) or parse_color(value) != value):
+        raise ValueError(f"Неверный цвет темы: {value!r}")
 
 # Для каждой настройки: допустимые значения (первое - по умолчанию не обязательно)
 OPTIONS = {
@@ -23,7 +36,8 @@ OPTIONS = {
 
 # Сложные настройки (словари) проверяются функцией, а не списком значений
 VALIDATORS = {
-    "custom_plan": validate_plan,     # последний набор из «Моей тренировки»
+    "custom_plan": _validate_plan_dict,   # последний набор из «Моей тренировки»
+    "theme": _validate_theme,             # пользовательская тема
 }
 
 DEFAULTS = {
@@ -33,6 +47,7 @@ DEFAULTS = {
                     "order": "mixed", "adaptive": True},
     "cube_skin": "classic",
     "daily_goal": 20,
+    "theme": "",
     "face_marks": False,
     "session_length": 10,
     "mouse_sensitivity": "medium",
@@ -55,8 +70,6 @@ class Preferences:
     def set(self, key, value):
         """Изменить настройку. Недопустимое значение - ошибка."""
         if key in VALIDATORS:
-            if not isinstance(value, dict):
-                raise ValueError(f"Недопустимое значение {value!r} для {key!r}")
             VALIDATORS[key](value)
         elif key not in OPTIONS:
             raise KeyError(f"Неизвестная настройка: {key!r}")

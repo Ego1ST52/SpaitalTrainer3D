@@ -431,3 +431,43 @@ def test_results_show_new_achievements(app, manager):
         assert any("Неон" in t for t in texts)
     finally:
         screen.close()
+
+
+def test_theme_recolors_new_widgets_and_resets(app):
+    from core import settings
+    from core.theme import apply_theme
+    from interface.ui_kit import label, UIButton
+    from engine.objects import dispose
+    from logic.theme import build_palette
+
+    original_accent = settings.ACCENT
+    palette = apply_theme("#ff7a45")
+    try:
+        assert settings.ACCENT == palette["ACCENT"] != original_accent
+        assert settings.MODE_COLORS["rotation"] == palette["MODE_COLORS"]["rotation"]
+        button = UIButton("Тест", lambda: None, variant="primary")
+        text = label("Тест", (0, 0), 1, "accent")
+        assert button.color == ursina.color.hex(build_palette("#ff7a45")["SELECTED_COLOR"])
+        assert text.color == ursina.color.hex(palette["ACCENT"])
+        dispose(button)
+        dispose(text)
+    finally:
+        apply_theme("")
+    assert settings.ACCENT == original_accent              # «Сброс» вернул стандартную
+
+
+def test_settings_theme_input(app, manager):
+    from interface.settings_screen import SettingsScreen
+    from logic.theme import NAMED_COLORS
+
+    chosen = []
+    screen = SettingsScreen(manager, "Тест", lambda k, v: None, on_theme=chosen.append)
+    try:
+        screen.theme_field.text = "радужный"
+        screen.apply_typed_theme()
+        assert not chosen and "Не понял цвет" in screen.theme_hint.text
+        screen.theme_field.text = "мятный"
+        screen.apply_typed_theme()
+        assert chosen == [NAMED_COLORS["мятный"]]
+    finally:
+        screen.close()

@@ -59,6 +59,10 @@ LABEL_SCALE = 40   # размер букв-меток в 3D-сцене (подб
 BUTTON_COLOR = "#18243a"
 BUTTON_HOVER = "#22324d"
 SELECTED_COLOR = "#0e7490"
+SELECTED_HOVER = "#1590ab"   # кнопка главного действия под курсором
+NAV_FACE = "#0e1830"         # грани куба-меню
+NAV_CORE = "#0a1222"         # «ядро» куба-меню
+HUB_COLOR = "#94a3b8"        # грань «Профиль»
 SHOW_FPS = False   # счётчик кадров в углу (для отладки)
 # Тренировка
 SESSION_LENGTH = 10

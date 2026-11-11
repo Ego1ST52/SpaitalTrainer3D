@@ -37,10 +37,15 @@ class Backdrop(Entity):
     поэтому всегда заполняет экран. Создаётся один раз на всё приложение."""
 
     def __init__(self):
+        super().__init__(parent=camera, model="quad", shader=unlit_shader, z=600,
+                         scale=(480, 270), eternal=True)
+        self.refresh()
+
+    def refresh(self):
+        """Перерисовать фон в цветах текущей темы."""
         texture = Texture(_gradient_image())
         texture.filtering = "bilinear"   # без «ступенек» между пикселями
-        super().__init__(parent=camera, model="quad", texture=texture,
-                         shader=unlit_shader, z=600, scale=(480, 270), eternal=True)
+        self.texture = texture
 
 
 def wire_cube_mesh():

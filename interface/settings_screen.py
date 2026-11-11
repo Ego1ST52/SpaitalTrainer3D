@@ -4,7 +4,9 @@ from core.preferences import prefs
 from engine.backdrop import FloatingCubes
 from engine.objects import ColoredCube, dispose
 from interface.base_screen import BaseScreen
-from interface.ui_kit import label, Segmented, UIButton
+from core import settings
+from interface.ui_kit import FRONT, label, Segmented, UIButton
+from logic.theme import PRESETS, parse_color
 from logic.achievements import BY_KEY, SKIN_UNLOCKS
 from logic.cube_skins import SKINS
 
@@ -40,9 +42,10 @@ class SettingsScreen(BaseScreen):
     """Личные настройки игрока. on_change(ключ, значение) сохраняет настройку.
     Справа - куб, который сразу показывает выбранный вид граней."""
 
-    def __init__(self, manager, player_name, on_change, unlocked_skins=()):
+    def __init__(self, manager, player_name, on_change, unlocked_skins=(), on_theme=None):
         super().__init__(manager)
         self.on_change = on_change
+        self.on_theme = on_theme
         self.unlocked_skins = set(unlocked_skins)
         self.skin_buttons = {}
         self.preview = None
@@ -72,9 +75,61 @@ class SettingsScreen(BaseScreen):
                 y -= 0.064
             y -= 0.012
 
-        self.own(label("Так будет выглядеть куб", (0.48, -0.25), 0.85, "muted",
+        self._build_theme_block()
+        self.own(label("Так будет выглядеть куб", (0.48, -0.42), 0.8, "muted",
                        origin=(0, 0)))
         self._build_preview()
+
+    # ---------- тема ----------
+    def _build_theme_block(self):
+        """Тема интерфейса: строка для цвета, «Применить», «Сброс» и готовые темы."""
+        left = 0.2              # правее сетки скинов
+        current = prefs.get("theme")
+        self.own(label("Тема интерфейса", (left, 0.3), 0.8, "accent"))
+        self.theme_field = self.own(InputField(position=(left + 0.15, 0.245, FRONT * 2),
+                                               scale=(0.3, 0.055), character_limit=14,
+                                               color=color.hex(settings.BUTTON_COLOR)))
+        self.theme_field.text = current
+        self.theme_field.submit_on = ["enter"]
+        self.theme_field.on_submit = self.apply_typed_theme
+        self.own(UIButton("Применить", self.apply_typed_theme, position=(left + 0.395, 0.245),
+                          scale=(0.17, 0.055), variant="primary", text_size=0.8))
+        self.own(UIButton("Сброс", lambda: self.set_theme(""), position=(left + 0.55, 0.245),
+                          scale=(0.12, 0.055), variant="ghost", text_size=0.8))
+        self.theme_hint = self.own(label("Любой цвет: #ff7a00, #f70 или словом: «мятный», "
+                                         "«бордовый»", (left, 0.195), 0.7, "muted"))
+
+        # Готовые темы - цветные кружки; у текущей - светлое кольцо
+        for i, (name, hex_value) in enumerate(PRESETS):
+            x = left + 0.022 + i * 0.066
+            swatch = hex_value or "#22d3ee"            # стандартная тема - бирюзовая
+            if hex_value == current:
+                self.own(Entity(parent=camera.ui, model="circle", scale=0.054,
+                                position=(x, 0.14, FRONT / 2),
+                                color=color.hex(settings.TEXT_STRONG)))
+            button = self.own(UIButton("", lambda c=hex_value: self.set_theme(c),
+                                       position=(x, 0.14, FRONT), scale=(0.044, 0.044),
+                                       radius=0.5))
+            button.color = button.highlight_color = color.hex(swatch)
+            button.model.setColorScale(button.color)
+            self.own(label(name, (x, 0.098), 0.6, "muted", origin=(0, 0)))
+        current_name = next((n for n, h in PRESETS if h == current), None)
+        caption = (f"Сейчас: {current_name}" if current_name
+                   else f"Сейчас: своя тема {current}")
+        self.own(label(caption, (left, 0.055), 0.75, "text"))
+
+    def apply_typed_theme(self):
+        try:
+            value = parse_color(self.theme_field.text)
+        except ValueError as error:
+            self.theme_hint.text = str(error)
+            self.theme_hint.color = color.hex(settings.WRONG_COLOR)
+            return
+        self.set_theme(value)
+
+    def set_theme(self, value):
+        if self.on_theme:
+            self.on_theme(value)
 
     def _build_skin_picker(self, y):
         """Шесть скинов в два ряда. Скины-награды закрыты, пока не получено
@@ -118,7 +173,7 @@ class SettingsScreen(BaseScreen):
             dispose(self.preview)
         self.preview = ColoredCube(skin=prefs.get("cube_skin"),
                                    marks=prefs.get("face_marks"),
-                                   position=(4.1, 0.6, 0), scale=2.4)
+                                   position=(4.2, -1.55, 0), scale=2.1)
         self.preview.rotation = (-22, 35, 0)
 
     def change(self, key, value):
