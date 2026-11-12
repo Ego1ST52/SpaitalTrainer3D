@@ -14,6 +14,7 @@ from core import settings
 from engine.objects import dispose
 from interface.base_screen import BaseScreen
 from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
+from interface.hint_control import HintMixin
 from interface.ui_kit import label, mode_color, Panel, TopBar, UIButton
 from logic.answer_checker import check_answer
 
@@ -33,7 +34,7 @@ def draw_picture(card, picture, hex_color, size=0.14):
                scale=cell * 0.86, color=color.hex(hex_color))
 
 
-class ChoiceGameScreen(BaseScreen):
+class ChoiceGameScreen(HintMixin, BaseScreen):
     MODE = None              # ключ режима, например "nets"
     HINT = ""                # подсказка внизу экрана
     PANEL_X = 0.42           # центр правой панели
@@ -62,6 +63,7 @@ class ChoiceGameScreen(BaseScreen):
         self.next_button = self.own(UIButton("Дальше", self.next_task,
                                              position=(window.top_right.x - 0.15, -0.43),
                                              scale=(0.2, 0.06), variant="primary"))
+        self.setup_hint((window.top_right.x - 0.38, -0.43))
         self.new_task()
 
     # ---------- что дописывает конкретный режим ----------
@@ -137,6 +139,7 @@ class ChoiceGameScreen(BaseScreen):
         self.question.text = self.task.question
         self.subtitle.text = self.subtitle_text()
         self.feedback.text = ""
+        self.reset_hint()
         self._update_status()
 
     def next_task(self):
@@ -148,13 +151,15 @@ class ChoiceGameScreen(BaseScreen):
             self.new_task()
 
     def choose(self, index):
-        if self.answered:
+        if self.answered or self.hint_blocked(index):
             return
         self.answered = True
+        self.close_hint()
         seconds = perf_counter() - self.task_started
         correct = check_answer(self.task, index)
         points = self.session.record(correct, seconds,
-                                     self.task.tags + self.task.answer_tags(index))
+                                     self.task.tags + self.task.answer_tags(index),
+                                     hints=self.hints_used)
         self.top_bar.flash_level(self.session)
 
         right = self.task.correct_index
@@ -171,6 +176,15 @@ class ChoiceGameScreen(BaseScreen):
         self._update_status()
         self.after_answer(correct)
 
+    def on_option_removed(self, index):
+        """Вычеркнутый подсказкой вариант: картинка на карточке почти гаснет."""
+        button = self.option_buttons[index]
+        for child in button.parent.children:
+            if child is not button:
+                child.alpha = 0.18
+                for part in child.children:
+                    part.alpha = 0.18
+
     def _update_status(self):
         self.top_bar.update_state(self.session, self.answered)
 
@@ -185,3 +199,5 @@ class ChoiceGameScreen(BaseScreen):
         if key in LEVEL_KEYS and not self.session.locked:
             self._start(LEVEL_KEYS[key])  # заново, с новым кодом
             self.new_task()
+        elif key == "h":
+            self.use_hint()

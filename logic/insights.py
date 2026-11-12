@@ -42,6 +42,13 @@ MISTAKES = {
     "chose:rotated_view": ("projection", "Поворачиваете картинку вида",
                       "на видах спереди и справа низ фигуры всегда внизу картинки, "
                       "на виде сверху ближняя к вам сторона - внизу"),
+    "chose:rev_reversed": ("reverse", "Путаете порядок поворотов",
+                           "сравните кубы после первого поворота: какая грань сдвинулась "
+                           "первой"),
+    "chose:rev_inverted": ("reverse", "Путаете направление поворота",
+                           "«+» - против часовой стрелки, если смотреть с конца оси"),
+    "chose:rev_skipped": ("reverse", "Не замечаете последний поворот",
+                          "проверьте цепочку целиком: куб «было» должен стать ровно как «стало»"),
     "chose:adjacent": ("nets", "Выбираете соседнюю грань вместо противоположной",
                        "в развёртке напротив - грань через одну клетку в ряду"),
 }
@@ -64,6 +71,10 @@ def tag_label(tag):
     if kind == "target":
         words = {"+Y": "сверху", "-Z": "спереди", "+X": "справа"}
         return f"вопрос «какая грань {words.get(value, value)}»"
+    if kind == "plane":
+        return "плоскость симметрии " + ("сбоку" if value == "x" else "спереди")
+    if kind == "turn":
+        return f"фигура повёрнута на {value}°"
     if kind == "angle":
         return f"повороты на {value}°"
     if kind == "moves":
@@ -168,3 +179,21 @@ def insights(log):
                               "Заметных слабых мест нет: по всем типам заданий "
                               "точность близка к средней."))
     return result
+
+
+PRACTICE_PER_MODE = 5      # заданий на режим в «Работе над ошибками»
+PRACTICE_MODES = 3         # сколько самых трудных режимов взять
+PRACTICE_BELOW = 90        # режимы с точностью ниже этой считаем «трудными»
+
+
+def practice_steps(log):
+    """«Работа над ошибками»: шаги тренировки [(режим, заданий)] из самых трудных
+    режимов (точность ниже PRACTICE_BELOW%, хотя бы MIN_SAMPLES заданий), от
+    самого трудного. Пустой список - трудных режимов нет или данных мало."""
+    by_mode = defaultdict(list)
+    for task in log or []:
+        by_mode[task["mode"]].append(task)
+    rows = [(accuracy(tasks), mode) for mode, tasks in by_mode.items()
+            if len(tasks) >= MIN_SAMPLES and accuracy(tasks) < PRACTICE_BELOW]
+    rows.sort()
+    return [(mode, PRACTICE_PER_MODE) for _, mode in rows[:PRACTICE_MODES]]

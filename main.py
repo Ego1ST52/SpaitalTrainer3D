@@ -1,4 +1,5 @@
 import sqlite3
+import webbrowser
 
 from ursina import *
 from ursina.lights import DirectionalLight, AmbientLight
@@ -23,6 +24,8 @@ from interface.sections_interface import SectionsGameScreen
 from interface.count_interface import CAMERA_VIEW as COUNT_CAMERA, CountGameScreen
 from interface.memory_interface import MemoryGameScreen
 from interface.shadow_interface import ShadowGameScreen
+from interface.reverse_interface import ReverseGameScreen
+from interface.build_modes import SymmetryGameScreen, ThreeViewsGameScreen
 from interface.results_screen import ResultsScreen
 from interface.statistics_screen import StatisticsScreen
 from interface.progress_screen import ProgressScreen
@@ -34,6 +37,11 @@ from interface.achievements_screen import AchievementsScreen
 from interface.analysis_screen import AnalysisScreen
 from logic.achievements import newly_unlocked, unlocked_skins
 from logic.report import build_rows, report_path, write_csv
+from logic.html_report import build_html, write_html
+from logic.assessment import STAGE_NAMES, summarize_test
+from interface.records_screen import RecordsScreen
+from interface.research_screen import ResearchScreen
+from interface.demo import DemoDirector, DemoStartScreen
 from interface import game_common
 from interface.duel_screens import DuelPassScreen, DuelResultsScreen, DuelSetupScreen
 
@@ -196,12 +204,18 @@ def make_report():
     if db is None:
         return "База данных недоступна - отчёт не собрать."
     try:
-        players = [(u["name"], db.get_history(u["id"]), db.get_task_log(u["id"]))
+        players = [(u["name"], db.get_history(u["id"]), db.get_task_log(u["id"]),
+                    db.get_settings(u["id"]).get("assessment"))
                    for u in db.list_users()]
-        path = write_csv(build_rows(players), report_path())
+        path = write_csv(build_rows([p[:3] for p in players]), report_path())
+        page = write_html(build_html(players))
     except (sqlite3.Error, OSError) as error:
         return f"Не удалось сохранить отчёт: {error}"
-    return f"Сохранено: Документы › SpatialTrainer3D › {path.name}"
+    try:
+        webbrowser.open(page.as_uri())          # страницу с графиками - сразу в браузер
+    except Exception as error:                  # браузера может и не быть
+        print("Не удалось открыть браузер:", error)
+    return f"Сохранено: Документы › SpatialTrainer3D › {path.stem} (.csv и .html)"
 
 
 def list_users():
@@ -317,13 +331,30 @@ def open_shadow(level="easy", seed=None, locked=False, playlist=None):
     return ShadowGameScreen(manager, level, seed, locked, playlist)
 
 
+def open_reverse(level="easy", seed=None, locked=False, playlist=None):
+    # Камера закреплена: оба куба должны быть видны одинаково
+    rig.view((0, 0, -14), 18, interactive=False)
+    return ReverseGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_symmetry(level="easy", seed=None, locked=False, playlist=None):
+    rig.view((1.8, 0, -17), 35)          # как в «Конструировании»
+    return SymmetryGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_views(level="easy", seed=None, locked=False, playlist=None):
+    rig.view((1.8, 0, -17), 35)
+    return ThreeViewsGameScreen(manager, level, seed, locked, playlist)
+
+
 # ---------- игра вдвоём ----------
 def mode_openers():
     """Режим -> функция, открывающая его экран (нужно дуэли)."""
     return {"rotation": open_rotation, "matching": open_matching,
             "projection": open_projection, "construction": open_construction,
             "nets": open_nets, "sections": open_sections, "count": open_count,
-            "memory": open_memory, "shadow": open_shadow}
+            "memory": open_memory, "shadow": open_shadow, "reverse": open_reverse,
+            "symmetry": open_symmetry, "views": open_views}
 
 
 def open_duel_setup():
@@ -387,6 +418,41 @@ def load_task_log():
         return None
 
 
+def open_records():
+    menu_view()
+    players = None
+    if db is not None:
+        try:
+            players = [(u["name"], db.get_history(u["id"])) for u in db.list_users()]
+        except sqlite3.Error as error:
+            print("Не удалось прочитать рекорды:", error)
+    return RecordsScreen(manager, players, player["name"])
+
+
+def open_research(message=""):
+    menu_view()
+    return ResearchScreen(manager, prefs.get("assessment"), load_task_log(), message)
+
+
+def open_test_results(playlist):
+    """Тест пройден: задания - в базу (как обычные тренировки), итоги - в
+    настройки игрока, чтобы потом сравнить входной и итоговый тест."""
+    save_and_check_achievements(playlist.merged_by_mode())
+    summary = summarize_test(playlist)
+    results = prefs.get("assessment")
+    results[playlist.stage] = summary
+    save_preference("assessment", results)
+    return open_research(f"{STAGE_NAMES[playlist.stage]} сохранён: точность "
+                         f"{summary['accuracy']:.0f}%, среднее время {summary['seconds']:.1f} с")
+
+
+def open_demo():
+    """Демо-режим: заставка, дальше режимы открывает DemoDirector сам."""
+    menu_view()
+    DemoDirector(manager)
+    return DemoStartScreen(manager)
+
+
 def open_analysis():
     menu_view()
     return AnalysisScreen(manager, load_task_log())
@@ -416,6 +482,9 @@ manager.register("sections", open_sections)
 manager.register("count", open_count)
 manager.register("memory", open_memory)
 manager.register("shadow", open_shadow)
+manager.register("reverse", open_reverse)
+manager.register("symmetry", open_symmetry)
+manager.register("views", open_views)
 manager.register("results", open_results)
 manager.register("custom", open_custom)
 manager.register("duel_setup", open_duel_setup)
@@ -424,6 +493,10 @@ manager.register("duel_continue", open_duel_continue)
 manager.register("duel_turn", open_duel_turn)
 manager.register("custom_results", open_custom_results)
 manager.register("statistics", open_statistics)
+manager.register("records", open_records)
+manager.register("research", open_research)
+manager.register("test_results", open_test_results)
+manager.register("demo", open_demo)
 manager.register("progress", open_progress)
 
 manager.go("menu")

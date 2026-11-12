@@ -13,7 +13,8 @@ LEVELS = [("easy", "Начальный"), ("medium", "Средний"), ("hard",
 MODES_ROW_1 = [("rotation", "Вращение"), ("matching", "Фигуры"), ("projection", "Проекции"),
                ("construction", "Сборка"), ("nets", "Развёртка")]
 MODES_ROW_2 = [("sections", "Сечения"), ("count", "Кубики"), ("memory", "Память"),
-               ("shadow", "Тень")]
+               ("shadow", "Тень"), ("reverse", "Повороты"), ("symmetry", "Симметрия"),
+               ("views", "По видам")]
 GOLD = "#fbbf24"
 
 
@@ -55,7 +56,7 @@ class DuelSetupScreen(BaseScreen):
         self.modes_1 = self.own(Segmented(MODES_ROW_1, "rotation", self._mode,
                                           position=(0.05, 0.07), width=1.4, text_size=0.8))
         self.modes_2 = self.own(Segmented(MODES_ROW_2, None, self._mode,
-                                          position=(-0.065, 0.005), width=1.17, text_size=0.8))
+                                          position=(0.05, 0.005), width=1.4, text_size=0.8))
         self.modes_2.clear()
         self.own(label("Уровень", (left, -0.09), 0.9))
         self.level = self.own(Segmented(LEVELS, "easy", lambda _: None,

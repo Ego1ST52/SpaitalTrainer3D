@@ -14,6 +14,7 @@ from logic.cube_skins import (face_color, face_names, has_pips, option_text,
 from logic.task_generator import RotationTaskGenerator
 from logic.answer_checker import check_answer
 from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
+from interface.hint_control import HintMixin
 
 
 
@@ -35,7 +36,7 @@ def make_floor():
     return floor
 
 
-class RotationGameScreen(BaseScreen):
+class RotationGameScreen(HintMixin, BaseScreen):
     """Игровой экран режима 1: вращение куба."""
 
     def __init__(self, manager, level="easy", seed=None, locked=False, playlist=None):
@@ -73,6 +74,7 @@ class RotationGameScreen(BaseScreen):
 
         self.own(Panel(PANEL_WIDTH, 0.78, position=(PANEL_X, -0.06)))
         self.own(label("Повороты по порядку", (PANEL_LEFT, 0.29), 0.8, "muted"))
+        self.setup_hint((PANEL_RIGHT - 0.075, 0.29), scale=(0.15, 0.04), text_size=0.65)
         self.question = self.own(label("", (PANEL_LEFT, 0.02), 1.05, "strong"))
         # Разбор ошибки: почему выбранный вариант неверен
         self.explanation_title = self.own(label("", (left, 0.225), 0.8, "wrong"))
@@ -128,6 +130,7 @@ class RotationGameScreen(BaseScreen):
         self.feedback.text = ""
         self.explanation.text = ""
         self.explanation_title.text = ""
+        self.reset_hint()
         self._update_status()
 
     def next_task(self):
@@ -140,13 +143,15 @@ class RotationGameScreen(BaseScreen):
 
     # ---------- ответ ----------
     def choose(self, index):
-        if self.answered or self.playing:
+        if self.answered or self.playing or self.hint_blocked(index):
             return
         self.answered = True
+        self.close_hint()
         seconds = perf_counter() - self.task_started
         correct = check_answer(self.task, index)
         points = self.session.record(correct, seconds,
-                                     self.task.tags + self.task.answer_tags(index))
+                                     self.task.tags + self.task.answer_tags(index),
+                                     hints=self.hints_used)
         self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
         self.option_buttons[self.task.correct_index].set_variant("correct")
@@ -249,6 +254,8 @@ class RotationGameScreen(BaseScreen):
             self.manual_turn(key, -1 if held_keys["shift"] else 1)
         elif key == "r":
             self.manual_reset()
+        elif key == "h":
+            self.use_hint()
         elif key == "left mouse down":
             # тянуть можно, только если нажали не на кнопку интерфейса
             hovered = mouse.hovered_entity

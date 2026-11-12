@@ -33,6 +33,10 @@ def new_training(mode, level, seed=None, locked=False, playlist=None):
         session = TrainingSession(mode, start, length, locked=True, adaptive=adaptive)
         session.playlist = playlist     # верхняя панель покажет общий прогресс
         session.note = "Моя тренировка"
+        if playlist.stage is not None:  # входной / итоговый тест: одинаковый для всех
+            seed = playlist.seeds.get(mode, seed)
+            session.no_hints = True
+            session.note = "тест  •  без подсказок"
         return session, seed
 
     if locked:
@@ -71,7 +75,9 @@ def finish_training(screen):
         screen.navigate("results", session=screen.session)
         return
     playlist.finish_step(screen.session)
-    if playlist.is_done:
+    if playlist.is_done and playlist.stage is not None:
+        screen.navigate("test_results", playlist=playlist)
+    elif playlist.is_done:
         screen.navigate("custom_results", playlist=playlist)
     else:
         mode, _ = playlist.current

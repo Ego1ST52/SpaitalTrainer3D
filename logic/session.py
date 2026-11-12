@@ -4,6 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from logic.adaptive import LEVEL_ORDER
+from logic.hints import points_with_hints
 from logic.scoring import task_points
 
 
@@ -42,14 +43,18 @@ class TrainingSession:
         """Уровень следующего задания."""
         return self.adaptive.level if self.adaptive else self.level
 
-    def record(self, correct, seconds, tags=()):
+    def record(self, correct, seconds, tags=(), hints=0):
         """Записать результат задания, вернуть начисленные баллы.
+        hints - сколько подсказок взято: каждая уменьшает баллы вдвое,
+        а в метки задания добавляется 'hint' (для анализа).
         Баллы считаются по уровню, на котором было задание. Если сложность
         адаптивная, после ответа уровень может смениться: см. level_change."""
         if self.is_finished:
             raise ValueError("Тренировка уже завершена")
         level = self.current_level
-        points = task_points(level, correct, seconds)
+        points = points_with_hints(task_points(level, correct, seconds), hints)
+        if hints:
+            tags = tuple(tags) + ("hint",)
         self.results.append(TaskResult(bool(correct), seconds, points, level, tuple(tags)))
         self.level_change = self.adaptive.record(correct) if self.adaptive else None
         return points

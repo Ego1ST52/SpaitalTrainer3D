@@ -15,6 +15,15 @@ MATCHING_LEVELS = {
 
 _ROTATIONS = sorted(all_orientations())
 
+# Угол поворота по следу матрицы (сумме чисел на диагонали):
+# у поворота на угол a след равен 1 + 2·cos(a)
+ANGLE_BY_TRACE = {3: 0, 1: 90, 0: 120, -1: 180}
+
+
+def rotation_angle(matrix):
+    """На сколько градусов поворачивает матрица (0, 90, 120 или 180)."""
+    return ANGLE_BY_TRACE[sum(matrix[i][i] for i in range(3))]
+
 KIND_CAPTIONS = {"correct": "та же фигура", "mirror": "зеркальная копия",
                  "changed": "другая фигура"}
 KIND_EXPLANATIONS = {
@@ -45,16 +54,29 @@ class MatchingTask:
         tags = [f"cubes:{len(self.reference)}"]
         if "mirror" in self.kinds:
             tags.append("has_mirror")
+        if self.options:
+            tags.append(f"turn:{self.turn_angle}")    # для опыта «время против угла»
         return tuple(tags)
+
+    def _fitting_rotations(self):
+        """Повороты, которые ставят правильный вариант точно как образец."""
+        target = normalize(self.reference)
+        return [m for m in _ROTATIONS if rotate_shape(self.correct_option, m) == target]
+
+    @property
+    def turn_angle(self):
+        """Насколько правильный вариант повёрнут относительно образца: угол
+        самого маленького совмещающего поворота (0, 90, 120 или 180 градусов).
+        Чем он больше, тем дольше люди обычно думают - это проверяет опыт
+        на экране «Исследование»."""
+        return min(rotation_angle(m) for m in self._fitting_rotations())
 
     @property
     def solution_moves(self):
         """Самая короткая цепочка поворотов, которая ставит правильный вариант
         точно как образец. У симметричной фигуры таких поворотов несколько
         (а может, вариант уже стоит как образец - тогда поворачивать не нужно)."""
-        target = normalize(self.reference)
-        fits = [m for m in _ROTATIONS if rotate_shape(self.correct_option, m) == target]
-        return min((shortest_moves(m) for m in fits), key=len)
+        return min((shortest_moves(m) for m in self._fitting_rotations()), key=len)
 
     def option_caption(self, index):
         """Подпись под вариантом после ответа."""

@@ -12,6 +12,7 @@ from interface.layout3d import ui_to_world, fit_scale
 from interface.ui_kit import FRONT, label, mode_color, Panel, TopBar, UIButton
 from logic.answer_checker import check_answer
 from logic.projections import ProjectionTaskGenerator, VIEWS
+from interface.hint_control import HintMixin
 from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
 
 LETTERS = "АБВГД"
@@ -28,7 +29,7 @@ VIEW_ROTATIONS = {"front": (0, 0), "top": (-90, 0), "right": (0, 90)}
 TURN_SECONDS = 0.8
 
 
-class ProjectionGameScreen(BaseScreen):
+class ProjectionGameScreen(HintMixin, BaseScreen):
     """Режим «Проекции»: выбрать, как фигура выглядит спереди, сверху или справа."""
 
     def __init__(self, manager, level="easy", seed=None, locked=False, playlist=None):
@@ -60,6 +61,7 @@ class ProjectionGameScreen(BaseScreen):
                                              position=(SHAPE_UI[0], -0.39),
                                              scale=(0.3, 0.055), text_size=0.8))
         self.look_button.enabled = False
+        self.setup_hint((window.top_right.x - 0.38, -0.43))
         self.new_task()
 
     def _start(self, level, seed=None, locked=False, playlist=None):
@@ -147,6 +149,7 @@ class ProjectionGameScreen(BaseScreen):
         self.feedback.text = ""
         self.explanation.text = ""
         self.look_button.enabled = False
+        self.reset_hint()
         self._update_status()
 
     def next_task(self):
@@ -158,13 +161,15 @@ class ProjectionGameScreen(BaseScreen):
             self.new_task()
 
     def choose(self, index):
-        if self.answered:
+        if self.answered or self.hint_blocked(index):
             return
         self.answered = True
+        self.close_hint()
         seconds = perf_counter() - self.task_started
         correct = check_answer(self.task, index)
         points = self.session.record(correct, seconds,
-                                     self.task.tags + self.task.answer_tags(index))
+                                     self.task.tags + self.task.answer_tags(index),
+                                     hints=self.hints_used)
         self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
         right = self.task.correct_index
@@ -213,3 +218,5 @@ class ProjectionGameScreen(BaseScreen):
             self.new_task()
         elif key == "r":
             self.rotator.reset()
+        elif key == "h":
+            self.use_hint()

@@ -9,6 +9,11 @@ class SceneManager:
     def register(self, name, factory):
         self._factories[name] = factory
 
+    @property
+    def current(self):
+        """Экран, который сейчас открыт (или None)."""
+        return self._current
+
     def go(self, name, **kwargs):
         if name not in self._factories:
             raise KeyError(f"Неизвестный экран: {name!r}")

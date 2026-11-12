@@ -19,6 +19,9 @@ from logic.tutorials import TUTORIALS
 
 # Тона текста. Цвета читаются из settings в момент создания надписи, а не
 # при запуске программы, - так работает смена темы (см. core/theme.py).
+# True, пока идёт демо-режим: подсказки «Как играть» при первом входе не открываются
+SUPPRESS_TUTORIALS = False
+
 TONES = {
     "text": "TEXT_COLOR",
     "strong": "TEXT_STRONG",
@@ -110,7 +113,8 @@ class UIButton(Button):
         }
 
     def __init__(self, text, on_click, position=(0, 0), scale=(0.3, 0.065),
-                 variant="secondary", parent=None, text_size=0.9, swatch=None, radius=0.3):
+                 variant="secondary", parent=None, text_size=0.9, swatch=None, radius=0.3,
+                 swatch_size=0.024):
         super().__init__(text=text, parent=parent or camera.ui, position=position,
                          scale=scale, radius=radius, text_size=text_size)
         self.on_click = on_click
@@ -119,7 +123,7 @@ class UIButton(Button):
             # Цветной квадратик у левого края. Кнопка растянута до scale,
             # поэтому размеры делим на scale, чтобы квадрат остался квадратом.
             width, height = scale
-            size = 0.024
+            size = swatch_size
             Entity(parent=self, model=rounded_quad(size, size, 0.005),
                    position=(-0.5 + 0.03 / width, 0, -0.02),
                    scale=(size / width, size / height),
@@ -141,6 +145,13 @@ class UIButton(Button):
         handler()
         if text and scale is not None:
             text.scale = scale
+
+    def strike(self):
+        """Вычеркнуть вариант ответа (подсказка): кнопка гаснет."""
+        self.set_variant("ghost")
+        self.struck = True
+        if self.text_entity:
+            self.text_entity.color = with_alpha(settings.TEXT_MUTED, 0.45)
 
     def set_variant(self, variant):
         fill, hover, text_color = self.variants()[variant]
@@ -328,7 +339,7 @@ class TopBar(Entity):
             UIButton("?", self.show_help, position=(right - 0.215, 0.43), scale=(0.05, 0.055),
                      variant="ghost", parent=self, text_size=1.1)
             seen = prefs.get("seen_tutorials")
-            if mode not in seen:
+            if mode not in seen and not SUPPRESS_TUTORIALS:
                 prefs.save("seen_tutorials", seen + [mode])
                 self.show_help()
 

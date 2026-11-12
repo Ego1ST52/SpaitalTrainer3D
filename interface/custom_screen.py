@@ -11,10 +11,12 @@ from logic.playlist import MODE_ORDER, Playlist, build_steps, validate_plan
 
 SHORT_NAMES = {"rotation": "Вращение", "matching": "Фигуры", "projection": "Проекции",
                "construction": "Сборка", "nets": "Развёртка", "sections": "Сечения",
-               "count": "Кубики", "memory": "Память", "shadow": "Тень"}
+               "count": "Кубики", "memory": "Память", "shadow": "Тень",
+               "reverse": "Повороты", "symmetry": "Симметрия", "views": "По видам"}
 # Примерно секунд на одно задание - для оценки длительности
 SECONDS_PER_TASK = {"rotation": 15, "matching": 20, "projection": 20, "construction": 60,
-                    "nets": 20, "sections": 25, "count": 15, "memory": 70, "shadow": 20}
+                    "nets": 20, "sections": 25, "count": 15, "memory": 70, "shadow": 20,
+                    "reverse": 20, "symmetry": 50, "views": 70}
 
 LABEL_X = -0.8
 CONTROL_X = -0.2
@@ -75,7 +77,7 @@ class CustomTrainingScreen(BaseScreen):
                                        position=(x, y - row * 0.072), scale=(chip, 0.062),
                                        text_size=0.75, swatch=mode_color(mode)))
             self.mode_buttons[mode] = button
-        y -= 0.072 * 2
+        y -= 0.072 * ((len(MODE_ORDER) - 1) // columns)
 
         rows = [
             ("Уровень", "level", [("easy", "Начальный"), ("medium", "Средний"),

@@ -35,8 +35,17 @@ WORKSHOP = [
     ("count", "Сколько кубиков?"),
     ("memory", "По памяти"),
     ("shadow", "Тень"),
+    ("reverse", "Найди повороты"),
+    ("symmetry", "Симметрия"),
+    ("views", "По трём видам"),
     ("duel", "Игра вдвоём"),
 ]
+
+# Кнопки на грани «Профиль»: (подпись, экран)
+HUB_BUTTONS = [("Статистика", "statistics"), ("Достижения", "achievements"),
+               ("Настройки", "settings"), ("Игроки", "profiles"),
+               ("Рекорды", "records"), ("Исследование", "research"),
+               ("Анализ ошибок", "analysis"), ("Демо-режим", "demo")]
 
 # Что написано на гранях: (номер, название, описание)
 FACE_TEXT = {
@@ -152,16 +161,17 @@ class MainMenu(BaseScreen):
         total = summarize(self.history)["accuracy"] if self.history else None
         label(f"точность за всё время {total:.0f}%" if total is not None else "профиль игрока",
               (0, 0.043), 0.75, "muted", origin=(0, 0), parent=content)
-        buttons = [("Статистика", "statistics"), ("Достижения", "achievements"),
-                   ("Настройки", "settings"), ("Игроки", "profiles")]
-        for i, (text, screen) in enumerate(buttons):
+        # Кнопки в два столбца: слева - про игрока, справа - для защиты и сравнения
+        rows = (len(HUB_BUTTONS) + 1) // 2
+        for i, (text, screen) in enumerate(HUB_BUTTONS):
+            column, row = divmod(i, rows)
             button = UIButton(text, lambda s=screen: self._hub_action(s), parent=content,
-                              position=(0, 0.0 - i * 0.042, FRONT), scale=(0.25, 0.036),
-                              text_size=0.8)
+                              position=(-0.088 + column * 0.176, 0.0 - row * 0.042, FRONT),
+                              scale=(0.168, 0.036), text_size=0.7)
             button.face_name = "bottom"
             # Ursina считает размер текста кнопки для слоя интерфейса; на грани
             # (она увеличена в CONTENT_SCALE раз) пересчитываем его по масштабу грани
-            button.text_entity.world_scale = Vec3(content.world_scale_x * 0.8)
+            button.text_entity.world_scale = Vec3(content.world_scale_x * 0.7)
 
     def _build_workshop(self, content, half, accent):
         """Верхняя грань «Мастерская»: кнопки новых режимов и своей тренировки."""
@@ -169,12 +179,17 @@ class MainMenu(BaseScreen):
         label("Мастерская", (0, 0.135), 1.3, "strong", origin=(0, 0), parent=content)
         label("своя тренировка и новые режимы", (0, 0.1), 0.7, "muted", origin=(0, 0),
               parent=content)
+        # Кнопки в два столбца: в один столбец все режимы на грань не помещаются
+        rows = (len(WORKSHOP) + 1) // 2
         for i, (mode, text) in enumerate(WORKSHOP):
+            column, row = divmod(i, rows)
             button = UIButton(text, lambda m=mode: self._workshop_action(m), parent=content,
-                              position=(0, 0.06 - i * 0.036, FRONT), scale=(0.3, 0.031),
-                              text_size=0.7, swatch=mode_color(mode))
+                              position=(-0.091 + column * 0.182, 0.055 - row * 0.045, FRONT),
+                              scale=(0.176, 0.036), text_size=0.55, swatch=mode_color(mode),
+                              swatch_size=0.013)
+            button.text_entity.x = 0.05          # текст чуть правее цветного квадрата
             button.face_name = "top"
-            button.text_entity.world_scale = Vec3(content.world_scale_x * 0.7)
+            button.text_entity.world_scale = Vec3(content.world_scale_x * 0.55)
 
     def _workshop_action(self, mode):
         # Кнопки работают, только когда «Мастерская» перед игроком
@@ -285,7 +300,7 @@ class MainMenu(BaseScreen):
             button.model.setColorScale(button.color)
 
         if kind == "hub":
-            self.hint.text = "статистика, достижения, настройки и игроки - кнопки на грани"
+            self.hint.text = "статистика, рекорды, исследование и демо - кнопки на грани"
         elif kind == "workshop":
             self.hint.text = "выберите режим кнопкой на грани  •  сложность - внизу"
         else:

@@ -12,7 +12,8 @@ from logic.adaptive import AdaptiveLevel
 from logic.session import TrainingSession
 
 MODE_ORDER = ["rotation", "matching", "projection", "construction",
-              "nets", "sections", "count", "memory", "shadow"]
+              "nets", "sections", "count", "memory", "shadow",
+              "reverse", "symmetry", "views"]
 PER_MODE_OPTIONS = (3, 5, 10)
 ORDERS = ("blocks", "mixed")
 
@@ -72,6 +73,8 @@ class Playlist:
         self.adaptive = AdaptiveLevel(level) if adaptive else None
         self.index = 0
         self.sessions = []           # завершённые шаги (TrainingSession)
+        self.seeds = {}              # режим -> зерно заданий (для теста: у всех одинаково)
+        self.stage = None            # 'pre' / 'post' - это входной / итоговый тест
 
     @property
     def current(self):

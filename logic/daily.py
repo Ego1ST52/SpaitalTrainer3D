@@ -12,7 +12,7 @@ from logic.training_code import make_code
 
 # Режимы по кругу: каждый день - следующий
 DAILY_MODES = ["rotation", "matching", "projection", "construction", "nets",
-               "sections", "count", "memory", "shadow"]
+               "sections", "count", "memory", "shadow", "reverse", "symmetry", "views"]
 # Уровень по дню недели: в начале недели проще, к выходным сложнее
 WEEKDAY_LEVELS = ["easy", "easy", "medium", "medium", "medium", "hard", "hard"]
 

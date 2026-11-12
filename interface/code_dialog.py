@@ -32,7 +32,7 @@ class CodeDialog(Entity):
               (left, 0.058), 0.8, "muted", parent=self)
 
         self.field = InputField(parent=self, position=(-0.08, -0.005, FRONT * 2),
-                                scale=(0.5, 0.06), character_limit=7,
+                                scale=(0.5, 0.06), character_limit=8,
                                 color=color.hex(settings.BUTTON_COLOR), active=True)
         self.field.limit_content_to = "0123456789- "
         self.field.submit_on = ["enter"]

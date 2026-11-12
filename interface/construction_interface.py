@@ -28,6 +28,7 @@ class ConstructionGameScreen(BaseScreen):
     Клик - поставить кубик, Shift+клик - убрать, Ctrl+Z - отменить."""
 
     MODE = "construction"
+    SAMPLE_TITLE = "Образец"
 
     def __init__(self, manager, level="easy", seed=None, locked=False, playlist=None):
         super().__init__(manager)
@@ -42,6 +43,7 @@ class ConstructionGameScreen(BaseScreen):
         self.preview_drag = None    # положение мыши, когда начали крутить образец
         self.preview_touched = False
         self.diff_ghosts = []       # прозрачные кубики «здесь не хватает»
+        self.sample_objects = []    # то, что рисует образец (кроме self.preview)
 
         # Площадка: тёмная плита с сеткой. Коллайдер нужен, чтобы мышь «видела» пол.
         size = 2 * GRID_HALF + 1
@@ -60,7 +62,7 @@ class ConstructionGameScreen(BaseScreen):
 
         self.top_bar = self.own(TopBar(self.MODE, self.go_back))
         self.own(Panel(PANEL_WIDTH, 0.78, position=(PANEL_X, -0.06)))
-        self.own(label("Образец", (PANEL_LEFT, 0.29), 0.8, "muted"))
+        self.sample_title = self.own(label(self.SAMPLE_TITLE, (PANEL_LEFT, 0.29), 0.8, "muted"))
         self.preview_hint = self.own(label("потяните мышью, чтобы покрутить",
                                            (PANEL_X + PANEL_WIDTH / 2 - 0.03, 0.29), 0.65,
                                            "muted", origin=(0.5, 0)))
@@ -92,12 +94,12 @@ class ConstructionGameScreen(BaseScreen):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
         self.playlist = playlist     # шаг «Моей тренировки» или None
         self.session, seed = new_training(self.MODE, level, seed, locked, playlist)
-        self.generator = ConstructionTaskGenerator(seed=seed)
+        self.generator = self.make_generator(seed)
 
     # ---------- задания ----------
     def new_task(self):
         self.task = self.generator.generate(self.session.current_level)
-        self.build = Build(self.task.max_cubes)
+        self.build = self.make_build()
         self.answered = False
         self.task_started = perf_counter()
         for block in self.blocks.values():
@@ -105,15 +107,11 @@ class ConstructionGameScreen(BaseScreen):
         self.blocks = {}
         self._clear_diff()
 
-        if self.preview:
-            dispose(self.preview)
-        extent = max(max(c[i] for c in self.task.target) - min(c[i] for c in self.task.target)
-                     for i in range(3)) + 1
-        self.preview = ShadedShape(self.task.target, self.accent,
-                                   position=(PANEL_X, PREVIEW_Y, -0.3),
-                                   scale=min(0.06, PREVIEW_BOX / extent), rotation_x=-25)
+        self._clear_sample()
+        self.show_sample()
         self.preview_drag = None
         self.preview_touched = False
+        self._sync_blocks()
 
         self.question.text = textwrap.fill(self.task.question, 28)
         self.feedback.text = ""
@@ -122,7 +120,48 @@ class ConstructionGameScreen(BaseScreen):
         self._refresh()
         self.on_task_started()
 
-    # ---------- точки расширения (см. режим «По памяти») ----------
+    # ---------- точки расширения (см. режимы «По памяти», «Симметрия», «По видам») ----------
+    def make_generator(self, seed):
+        return ConstructionTaskGenerator(seed=seed)
+
+    def make_build(self):
+        return Build(self.task.max_cubes)
+
+    def show_sample(self):
+        """Нарисовать образец в правой панели (по умолчанию - крутящаяся фигура)."""
+        target = self.task.target
+        extent = max(max(c[i] for c in target) - min(c[i] for c in target)
+                     for i in range(3)) + 1
+        self.preview = ShadedShape(target, self.accent, position=(PANEL_X, PREVIEW_Y, -0.3),
+                                   scale=min(0.06, PREVIEW_BOX / extent), rotation_x=-25)
+
+    def _clear_sample(self):
+        if self.preview:
+            dispose(self.preview)
+            self.preview = None
+        for obj in self.sample_objects:
+            dispose(obj)
+        self.sample_objects = []
+
+    def block_color(self, cell):
+        """Цвет кубика постройки, пока идёт сборка."""
+        return self.accent
+
+    def is_correct(self):
+        return check_build(self.build.cells, self.task.target)
+
+    def mistake_message(self):
+        """Что написать после неверной проверки (и что подсветить на площадке)."""
+        return build_hint(self.build.cells, self.task.target) + " " + self._show_diff()
+
+    def diff_cells(self):
+        """(совпавшие, лишние, недостающие) клетки для подсветки ошибок."""
+        return build_diff(self.build.cells, self.task.target)
+
+    def counter_text(self):
+        return (f"Поставлено: {len(self.build.cells)} из "
+                f"{len(self.task.target)}  (можно до {self.build.max_cubes})")
+
     def save_stl(self):
         """Сохранить постройку (или образец, если ничего не построено) в STL."""
         cells = sorted(self.build.cells) or list(self.task.target)
@@ -146,8 +185,7 @@ class ConstructionGameScreen(BaseScreen):
         return not self.answered
 
     def _refresh(self):
-        self.counter.text = (f"Поставлено: {len(self.build.cells)} из "
-                             f"{len(self.task.target)}  (можно до {self.build.max_cubes})")
+        self.counter.text = self.counter_text()
         self.top_bar.update_state(self.session, self.answered)
 
     # ---------- кубики ----------
@@ -158,7 +196,7 @@ class ConstructionGameScreen(BaseScreen):
                 dispose(self.blocks.pop(cell))
         for cell in self.build.cells:
             if cell not in self.blocks:
-                block = ShadedBlock(self.accent, position=cell)
+                block = ShadedBlock(self.block_color(cell), position=cell)
                 block.cell = cell
                 self.blocks[cell] = block
         self._refresh()
@@ -187,7 +225,7 @@ class ConstructionGameScreen(BaseScreen):
         if building:
             for block in self.blocks.values():
                 remove_me = removing and block is hovered
-                block.set_color(REMOVE_HINT_COLOR if remove_me else self.accent)
+                block.set_color(REMOVE_HINT_COLOR if remove_me else self.block_color(block.cell))
 
         cell = None if (removing or not building) else self._target_cell()
         if cell is not None and self.build.can_add(cell):
@@ -262,7 +300,7 @@ class ConstructionGameScreen(BaseScreen):
             return
         self.answered = True
         seconds = perf_counter() - self.task_started
-        correct = check_build(self.build.cells, self.task.target)
+        correct = self.is_correct()
         points = self.session.record(correct, seconds, self.task.tags)
         self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
@@ -272,8 +310,7 @@ class ConstructionGameScreen(BaseScreen):
         if correct:
             message = f"Верно! Фигура совпадает.  +{points} баллов"
         else:
-            message = "Не совпадает. " + build_hint(self.build.cells, self.task.target)
-            message += " " + self._show_diff()
+            message = "Не совпадает. " + self.mistake_message()
         # Длинную фразу переносим на несколько строк, чтобы влезла в панель
         self.feedback.text = textwrap.fill(message, 34)
         self.feedback.color = color.hex(result_color)
@@ -287,7 +324,7 @@ class ConstructionGameScreen(BaseScreen):
     def _show_diff(self):
         """Показать, чем постройка отличается от образца: совпавшие кубики -
         зелёные, лишние - красные, недостающие - прозрачные зелёные."""
-        matched, extra, missing = build_diff(self.build.cells, self.task.target)
+        matched, extra, missing = self.diff_cells()
         for cell, block in self.blocks.items():
             block.set_color(settings.CORRECT_COLOR if cell in matched
                             else settings.WRONG_COLOR)
@@ -323,7 +360,5 @@ class ConstructionGameScreen(BaseScreen):
             dispose(block)
         self.blocks = {}
         self._clear_diff()
-        if self.preview:
-            dispose(self.preview)
-            self.preview = None
+        self._clear_sample()
         super().close()

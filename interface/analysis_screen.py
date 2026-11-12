@@ -6,7 +6,8 @@ from ursina.shaders import unlit_shader
 from core import settings
 from interface.base_screen import BaseScreen
 from interface.ui_kit import FRONT, label, mode_color, Panel, UIButton
-from logic.insights import MIN_SAMPLES, insights, tag_label, weakest_tags
+from logic.insights import MIN_SAMPLES, insights, practice_steps, tag_label, weakest_tags
+from logic.playlist import Playlist
 
 KIND_COLORS = {"weak": "WRONG_COLOR", "mistake": "#fbbf24", "strong": "CORRECT_COLOR",
                "info": "TEXT_MUTED"}
@@ -35,6 +36,7 @@ class AnalysisScreen(BaseScreen):
             return
         self._cards(insights(log)[:MAX_CARDS], left)
         self._hardest(log)
+        self._practice(log, right)
         self.own(label("Выводы появляются, когда заданий одного типа набирается хотя бы "
                        f"{MIN_SAMPLES} - чтобы не судить по случайным ошибкам.",
                        (0, -0.455), 0.75, "muted", origin=(0, 0)))
@@ -53,6 +55,25 @@ class AnalysisScreen(BaseScreen):
             self.own(label(insight.title, (left + 0.03, y + 0.035), 0.95, "strong"))
             self.own(label(textwrap.fill(insight.detail, 68), (left + 0.03, y - 0.02), 0.75,
                            "text"))
+
+    def _practice(self, log, right):
+        """Кнопка «Работа над ошибками»: тренировка из самых трудных режимов."""
+        steps = practice_steps(log)
+        x = 0.06
+        if not steps:
+            self.own(label("Работа над ошибками появится, когда наберётся режим "
+                           "с точностью ниже 90%.", (x, -0.39), 0.72, "muted"))
+            return
+        names = ", ".join(settings.MODE_NAMES[mode] for mode, _ in steps)
+        self.own(label(textwrap.fill(f"Работа над ошибками: {names}", 52), (x, -0.335),
+                       0.75, "text"))
+        self.own(UIButton("Начать работу над ошибками", lambda: self.start_practice(steps),
+                          position=(right - 0.2, -0.4), scale=(0.4, 0.06), variant="primary"))
+
+    def start_practice(self, steps):
+        # Адаптивная сложность: начинаем с простого, дальше - по ответам
+        playlist = Playlist(steps, "easy", adaptive=True)
+        self.navigate(steps[0][0], playlist=playlist)
 
     def _hardest(self, log):
         x = 0.06

@@ -7,6 +7,7 @@
 
 import copy
 
+from logic.assessment import validate_assessment
 from logic.playlist import validate_plan
 from logic.theme import parse_color
 
@@ -28,6 +29,9 @@ def _validate_theme(value):
     if value != "" and (not isinstance(value, str) or parse_color(value) != value):
         raise ValueError(f"Неверный цвет темы: {value!r}")
 
+# Режимы-стройки: собирать дольше, чем выбирать ответ
+BUILD_MODES = ("construction", "memory", "symmetry", "views")
+
 # Для каждой настройки: допустимые значения (первое - по умолчанию не обязательно)
 OPTIONS = {
     "adaptive": (False, True),
@@ -47,6 +51,7 @@ VALIDATORS = {
     "custom_plan": _validate_plan_dict,   # последний набор из «Моей тренировки»
     "theme": _validate_theme,             # пользовательская тема
     "seen_tutorials": _validate_seen,     # режимы, где уже показана подсказка
+    "assessment": validate_assessment,    # итоги входного и итогового теста
 }
 
 DEFAULTS = {
@@ -58,6 +63,7 @@ DEFAULTS = {
     "daily_goal": 20,
     "theme": "",
     "seen_tutorials": [],
+    "assessment": {},
     "face_marks": False,
     "session_length": 10,
     "mouse_sensitivity": "medium",
@@ -122,7 +128,7 @@ class Preferences:
     def session_length(self, mode):
         """Сколько заданий в тренировке. Сборка дольше - заданий вдвое меньше."""
         length = self.get("session_length")
-        return max(3, length // 2) if mode == "construction" else length
+        return max(3, length // 2) if mode in BUILD_MODES else length
 
 
 # Настройки текущего игрока (один объект на всё приложение)

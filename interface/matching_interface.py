@@ -10,6 +10,7 @@ from interface.layout3d import ui_to_world, fit_scale
 from interface.ui_kit import label, TopBar, UIButton
 from logic.matching_tasks import MatchingTaskGenerator
 from logic.answer_checker import check_answer
+from interface.hint_control import HintMixin
 from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
 
 LETTERS = "АБВГД"
@@ -21,7 +22,7 @@ OPTION_MAX_SIZE = 1.7        # наибольший размер вариант�
 REFERENCE_MAX_SIZE = 2.4
 
 
-class MatchingGameScreen(BaseScreen):
+class MatchingGameScreen(HintMixin, BaseScreen):
     """Игровой экран режима 2: найти фигуру, совпадающую с образцом.
     Ответить можно кнопкой с буквой или кликом по самой фигуре."""
 
@@ -55,6 +56,8 @@ class MatchingGameScreen(BaseScreen):
                                               scale=(0.2, 0.05), text_size=0.7))
         self.solve_button.enabled = False
         self.playing = False
+        # До ответа на месте кнопки «Совместить» - подсказка
+        self.setup_hint((window.top_right.x - 0.15, -0.355), scale=(0.2, 0.05), text_size=0.7)
         self.new_task()
 
     def _start(self, level, seed=None, locked=False, playlist=None):
@@ -103,6 +106,7 @@ class MatchingGameScreen(BaseScreen):
         self.rotator.set_targets([reference] + self.option_views)
         self.rotator.reset()
         self.feedback.text = ""
+        self.reset_hint()
         self._update_status()
 
     def next_task(self):
@@ -114,13 +118,15 @@ class MatchingGameScreen(BaseScreen):
             self.new_task()
 
     def choose(self, index):
-        if self.answered:
+        if self.answered or self.hint_blocked(index):
             return
         self.answered = True
+        self.close_hint()
         seconds = perf_counter() - self.task_started
         correct = check_answer(self.task, index)
         points = self.session.record(correct, seconds,
-                                     self.task.tags + self.task.answer_tags(index))
+                                     self.task.tags + self.task.answer_tags(index),
+                                     hints=self.hints_used)
         self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
         right = self.task.correct_index
@@ -145,6 +151,9 @@ class MatchingGameScreen(BaseScreen):
         if self.session.is_finished:
             self.next_button.text = finish_label(self)
         self._update_status()
+
+    def on_option_removed(self, index):
+        self.option_views[index].set_color(settings.TEXT_MUTED)
 
     def show_solution(self):
         """Правильный вариант поворачивается по шагам и встаёт как образец."""
@@ -178,7 +187,10 @@ class MatchingGameScreen(BaseScreen):
         index = self._option_under_mouse()
         if index != self.hovered_index:
             for i, view in enumerate(self.option_views):
-                view.set_color(settings.SHAPE_HOVER if i == index else settings.SHAPE_COLOR)
+                if i in self.removed_options:
+                    view.set_color(settings.TEXT_MUTED)       # вычеркнут подсказкой
+                else:
+                    view.set_color(settings.SHAPE_HOVER if i == index else settings.SHAPE_COLOR)
             self.hovered_index = index
 
     def go_back(self):
@@ -196,6 +208,8 @@ class MatchingGameScreen(BaseScreen):
             self.new_task()
         elif key == "r":
             self.rotator.reset()
+        elif key == "h":
+            self.use_hint()
         elif key == "left mouse down":
             index = self._option_under_mouse()
             if index is not None:

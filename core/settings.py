@@ -37,6 +37,9 @@ MODE_COLORS = {
     "memory": ("#a3e635", "#26360a"),
     "shadow": ("#fda4af", "#40171d"),
     "duel": ("#f59e0b", "#3d2706"),         # «Игра вдвоём»
+    "reverse": ("#38bdf8", "#0c2d40"),      # «Найди повороты»
+    "symmetry": ("#c084fc", "#2f1747"),
+    "views": ("#facc15", "#3a3008"),        # «Собери по трём видам»
 }
 
 # Длительность поворота куба, секунд
@@ -76,7 +79,9 @@ MODE_NAMES = {"rotation": "Вращение куба", "matching": "Одинак
               "projection": "Проекции", "construction": "Конструирование",
               "custom": "Моя тренировка", "workshop": "Мастерская",
               "nets": "Развёртка", "sections": "Сечения", "count": "Сколько кубиков?",
-              "memory": "По памяти", "shadow": "Тень", "duel": "Игра вдвоём"}
+              "memory": "По памяти", "shadow": "Тень", "duel": "Игра вдвоём",
+              "reverse": "Найди повороты", "symmetry": "Симметрия",
+              "views": "Собери по трём видам"}
 # База данных
 DB_PATH = "data/spatial_trainer.db"
 DEFAULT_USER = "Игрок"

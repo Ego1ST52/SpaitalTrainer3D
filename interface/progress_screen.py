@@ -9,9 +9,10 @@ from interface.ui_kit import FRONT, label, Panel, Segmented, UIButton
 
 # Режимы в два ряда: десять кнопок в один ряд не помещаются
 MODES_ROW_1 = [(None, "Все"), ("rotation", "Вращение"), ("matching", "Фигуры"),
-               ("projection", "Проекции"), ("construction", "Сборка")]
-MODES_ROW_2 = [("nets", "Развёртка"), ("sections", "Сечения"), ("count", "Кубики"),
-               ("memory", "Память"), ("shadow", "Тень")]
+               ("projection", "Проекции"), ("construction", "Сборка"), ("nets", "Развёртка")]
+MODES_ROW_2 = [("sections", "Сечения"), ("count", "Кубики"), ("memory", "Память"),
+               ("shadow", "Тень"), ("reverse", "Повороты"), ("symmetry", "Симметрия"),
+               ("views", "Виды")]
 MODES = MODES_ROW_1 + MODES_ROW_2
 LEVELS = [(None, "Все"), ("easy", "Начальный"), ("medium", "Средний"),
           ("hard", "Продвинутый")]

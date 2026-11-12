@@ -104,6 +104,22 @@ def manager(app):
     m.register("memory", lambda: MemoryGameScreen(m, "easy"))
     m.register("shadow", lambda: ShadowGameScreen(m, "hard"))
     m.register("analysis", lambda: AnalysisScreen(m, log))
+    from interface.reverse_interface import ReverseGameScreen
+    from interface.build_modes import SymmetryGameScreen, ThreeViewsGameScreen
+    from interface.records_screen import RecordsScreen
+    from interface.research_screen import ResearchScreen
+    from interface.demo import DemoStartScreen
+    m.register("reverse", lambda: ReverseGameScreen(m, "hard"))
+    m.register("symmetry", lambda: SymmetryGameScreen(m, "medium"))
+    m.register("views", lambda: ThreeViewsGameScreen(m, "hard"))
+    m.register("records", lambda: RecordsScreen(m, [("Аня", HISTORY), ("Борис", [])], "Аня"))
+    turns = [{"mode": "matching", "correct": True, "seconds": 3 + a / 45, "tags": [f"turn:{a}"]}
+             for a in (0, 90, 120, 180) for _ in range(4)]
+    tests = {"pre": {"date": "2026-11-01", "accuracy": 60.0, "seconds": 12.0, "modes": {}},
+             "post": {"date": "2026-11-12", "accuracy": 70.0, "seconds": 11.0, "modes": {}}}
+    m.register("research", lambda: ResearchScreen(m, tests, turns, "готово"))
+    m.register("research_empty", lambda: ResearchScreen(m, {}, None))
+    m.register("demo_start", lambda: DemoStartScreen(m))
     from interface.duel_screens import DuelPassScreen, DuelResultsScreen, DuelSetupScreen
     m.register("duel_setup", lambda: DuelSetupScreen(m, users, 1))
     m.register("duel_pass", lambda: DuelPassScreen(m, _duel(turns=1)))
@@ -119,7 +135,9 @@ def manager(app):
                                     "settings", "profiles", "custom", "custom_results",
                                     "achievements", "nets", "sections", "count",
                                     "memory", "shadow", "analysis", "duel_setup",
-                                    "duel_pass", "duel_results"])
+                                    "duel_pass", "duel_results", "reverse", "symmetry",
+                                    "views", "records", "research", "research_empty",
+                                    "demo_start"])
 def test_screen_leaves_nothing_behind(app, manager, screen):
     before = count_entities()
     manager.go(screen)
@@ -897,4 +915,113 @@ def test_construction_wrong_build_shows_diff_and_cleans_up(app, manager):
     manager.go("menu")
     app.step()
     prefs.load({})
+    assert count_entities() == before
+
+
+def _wait(app, seconds, until=None):
+    import time
+    deadline = time.time() + seconds
+    while time.time() < deadline and not (until and until()):
+        app.step()
+
+
+def test_hint_strikes_wrong_option_and_halves_points(app, manager):
+    for name in ("rotation", "matching", "projection", "nets", "reverse"):
+        manager.go(name)
+        app.step()
+        screen = manager._current
+        removed = screen.use_hint()
+        assert removed is not None and removed != screen.task.correct_index
+        assert screen.option_buttons[removed].struck
+        screen.choose(removed)                       # по вычеркнутому - не считается
+        assert not screen.answered
+        screen.choose(screen.task.correct_index)
+        result = screen.session.results[-1]
+        assert result.correct and "hint" in result.tags
+        assert not screen.hint_button.enabled        # после ответа подсказки нет
+        manager.go("menu")
+        app.step()
+
+
+def test_reverse_before_cube_ends_like_after_cube(app, manager):
+    """После ответа куб «было» выполняет правильные повороты и на экране
+    смотрит точно так же, как куб «стало»."""
+    manager.go("reverse")
+    app.step()
+    screen = manager._current
+    task = screen.task
+    after = screen.after_cube
+    screen.choose((task.correct_index + 1) % len(task.options))
+    # Ждём, пока куб «было» выполнит все повороты (каждый ~0.5 с с паузой)
+    _wait(app, 10, lambda: not screen.before.busy and screen.before.orientation == task.target)
+    _wait(app, 0.1)
+    assert not screen.before.busy and screen.before.orientation == task.target
+    for direction in ("forward", "up", "right"):
+        a, b = getattr(screen.before, direction), getattr(after, direction)
+        assert (a - b).length() < 0.05, direction
+
+
+def test_symmetry_and_views_accept_correct_builds(app, manager):
+    from logic.symmetry import mirrored_part
+    for name in ("symmetry", "views"):
+        manager.go(name)
+        app.step()
+        screen = manager._current
+        task = screen.task
+        if name == "symmetry":
+            cells = sorted(mirrored_part(task.given, task.plane))
+            assert not screen.build.remove(task.given[0])   # данные кубики не убрать
+        else:
+            cells = [(x - 1, y, z - 1) for x, y, z in task.shape]
+        for _ in cells:
+            for cell in cells:
+                screen.build.add(cell)
+        screen._sync_blocks()
+        screen.check()
+        assert screen.session.results[-1].correct, name
+        manager.go("menu")
+        app.step()
+
+
+def test_demo_runs_through_modes_and_returns_to_menu(app, manager, monkeypatch):
+    from interface import demo
+    from interface.main_menu import MainMenu
+    monkeypatch.setattr(demo, "THINK_SECONDS", 0.2)
+    monkeypatch.setattr(demo, "CUBE_SECONDS", 0.02)
+    from core.scene_manager import SceneManager
+    from interface.game_interface import RotationGameScreen
+    from interface.construction_interface import ConstructionGameScreen
+    from interface.build_modes import ThreeViewsGameScreen
+    manager.go("menu")
+    app.step()
+    before = count_entities()
+    m = SceneManager()                       # демо открывает режимы с level=...
+    m._current = manager.current
+    m.register("menu", lambda: MainMenu(m))
+    m.register("rotation", lambda level: RotationGameScreen(m, level))
+    m.register("construction", lambda level: ConstructionGameScreen(m, level))
+    m.register("views", lambda level: ThreeViewsGameScreen(m, level))
+    manager = m
+    director = demo.DemoDirector(m, [("rotation", 0.3), ("construction", 0.2),
+                                     ("views", 0.2)])
+    seen, screens = [type(m.current).__name__], [m.current]
+    import time
+    deadline = time.time() + 20
+    while time.time() < deadline and not director.stopped:
+        app.step()
+        current = type(manager.current).__name__
+        if not seen or seen[-1] != current:
+            seen.append(current)
+            screens.append(manager.current)
+    _wait(app, 3, lambda: isinstance(manager.current, MainMenu))
+    _wait(app, 0.2)
+    if seen[-1] != type(manager.current).__name__:
+        seen.append(type(manager.current).__name__)       # возврат в меню после демо
+        screens.append(manager.current)
+    assert seen == ["MainMenu", "RotationGameScreen", "ConstructionGameScreen",
+                    "ThreeViewsGameScreen", "MainMenu"]
+    # В каждом режиме демо ответило (или собрало фигуру) правильно
+    for screen in screens[1:-1]:
+        assert [r.correct for r in screen.session.results] == [True]
+    assert isinstance(manager.current, MainMenu)
     assert count_entities() == before
