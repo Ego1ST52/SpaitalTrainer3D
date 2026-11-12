@@ -34,8 +34,10 @@ PRESETS = [
     ("Сакура", "#f472b6"), ("Графит", "#9ca3af"),
 ]
 
-MODES = ["rotation", "matching", "projection", "construction", "custom"]
-MODE_HUE_SHIFTS = [0, 40, -40, 80, -80]       # градусы по цветовому кругу
+MODES = ["rotation", "matching", "projection", "construction", "custom", "workshop",
+         "nets", "sections", "count", "memory", "shadow", "duel"]
+# Сдвиг оттенка каждого режима по цветовому кругу (градусы)
+MODE_HUE_SHIFTS = [0, 40, -40, 80, -80, -100, 120, -120, 150, -150, 180, 60]
 
 # Какие цвета интерфейса меняет тема (имена как в core/settings.py)
 THEME_KEYS = [
@@ -142,7 +144,8 @@ def build_palette(hex_color):
     modes = {}
     for i, (mode, shift) in enumerate(zip(MODES, MODE_HUE_SHIFTS)):
         if mono:
-            bright = hls(h, 0.85 - i * 0.06, 0)
+            # серые оттенки от почти белого до средне-серого - все читаются
+            bright = hls(h, 0.92 - i * 0.3 / (len(MODES) - 1), 0)
         else:
             bright = _readable(h + shift / 360, accent_s, surface)
         modes[mode] = (bright, hls(h + shift / 360, 0.17, accent_s * 0.6))

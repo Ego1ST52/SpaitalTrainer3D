@@ -32,6 +32,18 @@ class RotationTask:
     def correct_option(self):
         return self.options[self.correct_index]
 
+    @property
+    def tags(self):
+        """Метки для анализа ошибок: вокруг каких осей и сколько поворотов."""
+        axes = sorted({axis for axis, _ in self.moves})
+        tags = [f"axis:{axis}" for axis in axes] + [f"moves:{len(self.moves)}"]
+        if any(abs(angle) == 180 for _, angle in self.moves):
+            tags.append("angle:180")
+        return tuple(tags)
+
+    def answer_tags(self, chosen_index):
+        return ()
+
     def describe_moves(self):
         parts = []
         for number, (axis, angle) in enumerate(self.moves, start=1):

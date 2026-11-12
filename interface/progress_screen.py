@@ -7,8 +7,12 @@ from engine.objects import dispose
 from interface.base_screen import BaseScreen
 from interface.ui_kit import FRONT, label, Panel, Segmented, UIButton
 
-MODES = [(None, "Все"), ("rotation", "Вращение"), ("matching", "Фигуры"),
-         ("projection", "Проекции"), ("construction", "Сборка")]
+# Режимы в два ряда: десять кнопок в один ряд не помещаются
+MODES_ROW_1 = [(None, "Все"), ("rotation", "Вращение"), ("matching", "Фигуры"),
+               ("projection", "Проекции"), ("construction", "Сборка")]
+MODES_ROW_2 = [("nets", "Развёртка"), ("sections", "Сечения"), ("count", "Кубики"),
+               ("memory", "Память"), ("shadow", "Тень")]
+MODES = MODES_ROW_1 + MODES_ROW_2
 LEVELS = [(None, "Все"), ("easy", "Начальный"), ("medium", "Средний"),
           ("hard", "Продвинутый")]
 
@@ -50,12 +54,16 @@ class ProgressScreen(BaseScreen):
             return
 
         self.own(label("Режим", (-0.81, 0.27), 0.8, "muted"))
-        self.mode_switch = self.own(Segmented(MODES, None, self.set_mode,
-                                              position=(-0.42, 0.22), width=0.78,
-                                              text_size=0.8))
+        self.mode_switch = self.own(Segmented(MODES_ROW_1, None, self.set_mode,
+                                              position=(-0.42, 0.235), width=0.78,
+                                              text_size=0.75, height=0.05))
+        self.mode_switch_2 = self.own(Segmented(MODES_ROW_2, None, self.set_mode,
+                                                position=(-0.42, 0.18), width=0.78,
+                                                text_size=0.75, height=0.05))
+        self.mode_switch_2.clear()
         self.own(label("Уровень", (0.03, 0.27), 0.8, "muted"))
         self.level_switch = self.own(Segmented(LEVELS, None, self.set_level,
-                                               position=(0.42, 0.22), width=0.78,
+                                               position=(0.42, 0.235), width=0.78,
                                                text_size=0.8))
         self.own(Panel(1.62, 0.5, position=(0, -0.1)))
         self.refresh()
@@ -63,6 +71,11 @@ class ProgressScreen(BaseScreen):
     # ---------- фильтры ----------
     def set_mode(self, mode):
         self.mode = mode
+        # Выбор в одном ряду снимает выделение в другом
+        if mode in dict(MODES_ROW_1):
+            self.mode_switch_2.clear()
+        else:
+            self.mode_switch.clear()
         self.refresh()
 
     def set_level(self, level):
@@ -71,7 +84,9 @@ class ProgressScreen(BaseScreen):
 
     def next_mode(self):
         keys = [key for key, _ in MODES]
-        self.mode_switch.select(keys[(keys.index(self.mode) + 1) % len(keys)])
+        mode = keys[(keys.index(self.mode) + 1) % len(keys)]
+        switch = self.mode_switch if mode in dict(MODES_ROW_1) else self.mode_switch_2
+        switch.select(mode)
 
     def next_level(self):
         keys = [key for key, _ in LEVELS]

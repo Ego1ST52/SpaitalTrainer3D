@@ -39,6 +39,21 @@ def count_entities():
                 if e and not getattr(e, "eternal", False)])
 
 
+def _duel(turns):
+    """Дуэль Ани и Бориса, в которой сыграно turns ходов."""
+    from logic.duel import Duel
+    from logic.session import TrainingSession
+
+    duel = Duel([{"id": 1, "name": "Аня", "color": "#22d3ee"},
+                 {"id": 2, "name": "Борис", "color": "#a78bfa"}], "rotation", "easy", seed=5)
+    for k in range(turns):
+        session = TrainingSession("rotation", "easy", 3, code=duel.code, locked=True)
+        for answer in (True, k == 0, False):
+            session.record(answer, 4)
+        duel.finish_turn(session)
+    return duel
+
+
 @pytest.fixture
 def manager(app):
     from core.scene_manager import SceneManager
@@ -55,6 +70,16 @@ def manager(app):
     from interface.custom_results_screen import CustomResultsScreen
     from core.preferences import DEFAULTS
     from interface.achievements_screen import AchievementsScreen
+    from interface.nets_interface import NetsGameScreen
+    from interface.sections_interface import SectionsGameScreen
+    from interface.count_interface import CountGameScreen
+    from interface.memory_interface import MemoryGameScreen
+    from interface.shadow_interface import ShadowGameScreen
+    from interface.analysis_screen import AnalysisScreen
+    log = ([{"mode": "rotation", "level": "easy", "correct": True, "seconds": 3,
+             "played_at": "2026-11-12T10:00:00", "tags": ["axis:x"]}] * 10
+           + [{"mode": "rotation", "level": "easy", "correct": False, "seconds": 3,
+               "played_at": "2026-11-12T10:00:00", "tags": ["axis:z"]}] * 6)
 
     m = SceneManager()
     m.register("menu", lambda: MainMenu(m))
@@ -73,6 +98,16 @@ def manager(app):
                                                       lambda plan: None))
     m.register("custom_results", lambda: CustomResultsScreen(m, _finished_playlist()))
     m.register("achievements", lambda: AchievementsScreen(m, HISTORY, 20, lambda goal: None))
+    m.register("nets", lambda: NetsGameScreen(m, "hard"))
+    m.register("sections", lambda: SectionsGameScreen(m, "hard"))
+    m.register("count", lambda: CountGameScreen(m, "hard"))
+    m.register("memory", lambda: MemoryGameScreen(m, "easy"))
+    m.register("shadow", lambda: ShadowGameScreen(m, "hard"))
+    m.register("analysis", lambda: AnalysisScreen(m, log))
+    from interface.duel_screens import DuelPassScreen, DuelResultsScreen, DuelSetupScreen
+    m.register("duel_setup", lambda: DuelSetupScreen(m, users, 1))
+    m.register("duel_pass", lambda: DuelPassScreen(m, _duel(turns=1)))
+    m.register("duel_results", lambda: DuelResultsScreen(m, _duel(turns=2)))
     m.go("menu")
     app.step()
     yield m
@@ -82,7 +117,9 @@ def manager(app):
 
 @pytest.mark.parametrize("screen", ["progress", "statistics", "rotation", "matching", "projection", "construction",
                                     "settings", "profiles", "custom", "custom_results",
-                                    "achievements"])
+                                    "achievements", "nets", "sections", "count",
+                                    "memory", "shadow", "analysis", "duel_setup",
+                                    "duel_pass", "duel_results"])
 def test_screen_leaves_nothing_behind(app, manager, screen):
     before = count_entities()
     manager.go(screen)
@@ -333,7 +370,7 @@ def test_cube_net_jumps_to_face(app, manager):
     menu.go_to("bottom")
     assert menu.nav.front_content == "hub"
     menu.go_to("top")
-    assert menu.nav.front_content == "custom"
+    assert menu.nav.front_content == "workshop"
 
 
 def test_hub_buttons_work_only_when_hub_is_in_front(app, manager):
@@ -471,3 +508,249 @@ def test_settings_theme_input(app, manager):
         assert chosen == [NAMED_COLORS["мятный"]]
     finally:
         screen.close()
+
+
+def test_profiles_rename_and_delete(app, manager):
+    from interface.profiles_screen import ProfilesScreen
+
+    users = [{"id": 1, "name": "Peresvet", "color": "#22d3ee", "sessions": 3},
+             {"id": 2, "name": "Борис", "color": "#a78bfa", "sessions": 0}]
+    renamed, deleted, calls = [], [], []
+
+    def fake_delete(user_id):
+        deleted.append(user_id)
+        return None if user_id == 2 else "Нельзя удалить единственного игрока."
+
+    screen = ProfilesScreen(manager, users, 1, lambda uid: None, lambda name: None,
+                            lambda uid, name: renamed.append((uid, name)), fake_delete)
+    screen.navigate = lambda name, **kwargs: calls.append(name)
+    try:
+        screen.start_rename(users[0])
+        assert screen.name_field.text == "Peresvet"
+        assert screen.submit_button.text == "Сохранить" and screen.cancel_button.enabled
+        screen.name_field.text = "Пересвет"
+        screen.submit()
+        assert renamed == [(1, "Пересвет")] and calls == ["profiles"]
+
+        screen.ask_delete(users[1])
+        assert screen.dialog is not None
+        screen.close_dialog()                          # передумали
+        assert deleted == []
+        screen.ask_delete(users[1])
+        screen.delete(2)
+        assert deleted == [2] and calls[-1] == "profiles"
+
+        calls.clear()
+        screen.delete(1)                               # база отказала - видна ошибка
+        assert "единственного" in screen.error.text and calls == []
+    finally:
+        screen.close()
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_3d_fold_matches_logic_not_mirror(app, seed):
+    """3D-складывание даёт тот же кубик, что и логика, а не зеркальный:
+    иначе вопрос «какой кубик получится» показывал бы неверное решение."""
+    from engine.net_fold import NetFold
+    from engine.objects import dispose
+    from logic.nets import NetTaskGenerator
+    from logic.rotations import all_orientations, face_direction
+
+    task = NetTaskGenerator(seed=seed).generate("hard")
+    net = NetFold(task.cells, task.letters)
+    try:
+        for hinge, axis, angle in net.hinges:          # сложить мгновенно
+            setattr(hinge, axis, angle)
+        directions = {(1, 0, 0): "+X", (-1, 0, 0): "-X", (0, 1, 0): "+Y",
+                      (0, -1, 0): "-Y", (0, 0, 1): "+Z", (0, 0, -1): "-Z"}
+        visual = {}                                    # буква -> куда смотрит её грань
+        for text in [e for e in net.get_descendants() if isinstance(e, ursina.Text)]:
+            up = text.parent.up                        # лицо клетки (буквы) - вверх у рамки
+            visual[text.text] = directions[tuple(round(v) for v in up)]
+        assert len(set(visual.values())) == 6          # все шесть граней разные
+        logic = {letter: face for face, letter in task.face_letters.items()}
+        assert any(all(face_direction(r, logic[l]) == visual[l] for l in logic)
+                   for r in all_orientations())
+    finally:
+        dispose(net)
+
+
+def test_count_camera_sees_top_front_left(app):
+    """Логика «Сколько кубиков?» считает, что видны верх, перед и левый бок.
+    Проверяем по-настоящему: какие грани кубика башни повёрнуты к камере."""
+    from ursina import Entity, Vec3
+    from interface.count_interface import CAMERA_VIEW, TOWER_POSITION, TOWER_YAW
+
+    position, pitch = CAMERA_VIEW
+    pivot = Entity(rotation_x=pitch)                 # так устроена камера в engine/camera.py
+    cam = Entity(parent=pivot, position=position)
+    tower = Entity(position=TOWER_POSITION, rotation_y=TOWER_YAW)
+    try:
+        faces = {"left": Vec3(-1, 0, 0), "right": Vec3(1, 0, 0), "top": Vec3(0, 1, 0),
+                 "bottom": Vec3(0, -1, 0), "front": Vec3(0, 0, -1), "back": Vec3(0, 0, 1)}
+        visible = set()
+        for name, normal in faces.items():
+            marker = Entity(parent=tower, position=normal * 0.5 + Vec3(0, 0.5, 0))
+            world_normal = (marker.world_position - tower.world_position
+                            - Vec3(0, 0.5, 0)).normalized()
+            if world_normal.dot(cam.world_position - marker.world_position) > 0:
+                visible.add(name)
+            marker.removeNode()
+        assert visible == {"top", "front", "left"}
+    finally:
+        for e in (cam, pivot, tower):
+            e.removeNode()
+
+
+def test_memory_hides_sample_and_blocks_building_until_hidden(app, manager):
+    import time
+    from interface.memory_interface import MemoryGameScreen
+    from interface.shadow_interface import ShadowGameScreen
+    from interface.analysis_screen import AnalysisScreen
+    log = ([{"mode": "rotation", "level": "easy", "correct": True, "seconds": 3,
+             "played_at": "2026-11-12T10:00:00", "tags": ["axis:x"]}] * 10
+           + [{"mode": "rotation", "level": "easy", "correct": False, "seconds": 3,
+               "played_at": "2026-11-12T10:00:00", "tags": ["axis:z"]}] * 6)
+
+    screen = MemoryGameScreen(manager, "hard")
+    try:
+        assert screen.preview.enabled and not screen.can_build()   # смотрим и запоминаем
+        screen.hide_at = time.time() - 0.01                       # время вышло
+        screen.update()
+        assert screen.hidden and not screen.preview.enabled and screen.can_build()
+        remaining = [(x - 2, y, z - 2) for x, y, z in screen.task.target]
+        while remaining:
+            placed = [c for c in remaining if screen.build.add(c)]
+            remaining = [c for c in remaining if c not in placed]
+        screen._sync_blocks()
+        screen.check()
+        assert screen.session.results[-1].correct
+        assert screen.preview.enabled                              # образец снова виден
+        assert screen.session.mode == "memory"
+    finally:
+        screen.close()
+
+
+def test_daily_button_starts_todays_locked_training(app, manager):
+    from logic.daily import daily_task
+    menu, calls = _fresh_menu(manager, app)
+    menu.start_daily()
+    mode, level, seed, _ = daily_task()
+    assert calls == [(mode, {"level": level, "seed": seed, "locked": True})]
+
+
+def test_tutorial_shows_once_and_on_help(app, manager):
+    from core.preferences import prefs
+    from interface.ui_kit import TopBar
+
+    saved = []
+    prefs.load({})
+    prefs.saver = lambda key, value: saved.append((key, value))
+    try:
+        first = TopBar("sections", lambda: None)
+        assert first.dialog is not None                      # первый вход - подсказка
+        assert saved == [("seen_tutorials", ["sections"])]   # и отметка сохранена
+        first.close_help()
+        assert first.dialog is None
+        ursina.destroy(first)
+
+        second = TopBar("sections", lambda: None)
+        assert second.dialog is None                         # второй раз - не мешаем
+        second.show_help()                                   # кнопка «?»
+        assert second.dialog is not None
+        second.close_help()
+        ursina.destroy(second)
+    finally:
+        prefs.saver = None
+        prefs.load({})
+
+
+def test_construction_saves_stl_after_check(app, manager, tmp_path):
+    from interface.construction_interface import ConstructionGameScreen
+
+    screen = ConstructionGameScreen(manager, "easy")
+    screen.export_folder = tmp_path
+    try:
+        assert not screen.stl_button.enabled               # до проверки - нечего сохранять
+        screen.build.add((0, 0, 0))
+        screen._sync_blocks()
+        screen.check()
+        assert screen.stl_button.enabled
+        path = screen.save_stl()
+        assert path.exists() and path.read_text(encoding="ascii").startswith("solid")
+        assert path.name in screen.counter.text
+    finally:
+        screen.close()
+
+
+def test_duel_two_players_same_tasks(app, manager):
+    from interface import game_common
+    from interface.count_interface import CountGameScreen
+    from interface.duel_screens import DuelPassScreen, DuelResultsScreen
+    from logic.duel import Duel
+
+    anya = {"id": 1, "name": "Аня", "color": "#22d3ee"}
+    boris = {"id": 2, "name": "Борис", "color": "#a78bfa"}
+    duel = Duel([anya, boris], "count", "easy", seed=321)
+    game_common.active_duel = duel
+    tasks = []
+    try:
+        for turn in range(2):
+            calls = []
+            screen = CountGameScreen(manager, duel.level, duel.seed, True)
+            screen.navigate = lambda name, **kwargs: calls.append((name, kwargs))
+            try:
+                assert screen.session.duel is duel
+                tasks.append(screen.task)
+                while not calls:
+                    screen.choose(screen.task.correct_index if turn == 0 else 0)
+                    screen.next_task()
+            finally:
+                screen.close()
+            name, kwargs = calls[-1]
+            assert name == "duel_turn"                    # не обычные итоги, а передача хода
+            duel.finish_turn(kwargs["session"])
+            if turn == 0:
+                DuelPassScreen(manager, duel).close()
+        assert tasks[0] == tasks[1]                        # у обоих одинаковое первое задание
+        assert duel.is_done and duel.winner() in (0, None)
+        DuelResultsScreen(manager, duel).close()
+    finally:
+        game_common.active_duel = None
+
+
+def test_duel_setup_needs_two_players(app, manager):
+    from interface.duel_screens import DuelSetupScreen
+    users = [{"id": 1, "name": "Аня", "color": "#22d3ee", "sessions": 0},
+             {"id": 2, "name": "Борис", "color": "#a78bfa", "sessions": 0}]
+    calls = []
+    screen = DuelSetupScreen(manager, users, 1)
+    screen.navigate = lambda name, **kwargs: calls.append((name, kwargs))
+    try:
+        screen.second.select(1)                            # оба - Аня
+        screen.start()
+        assert "разных" in screen.error.text and not calls
+        screen.second.select(2)
+        screen._mode("shadow")
+        screen.start()
+        duel = calls[-1][1]["duel"]
+        assert duel.mode == "shadow" and [p["id"] for p in duel.players] == [1, 2]
+    finally:
+        screen.close()
+    lonely = DuelSetupScreen(manager, users[:1], 1)
+    lonely.close()
+
+
+def test_stereo_setting_warns_about_restart(app, manager):
+    from core.preferences import prefs
+    from interface.settings_screen import STEREO_NOTE, SettingsScreen
+
+    saved = []
+    screen = SettingsScreen(manager, "Тест", lambda key, value: saved.append((key, value)))
+    try:
+        assert screen.stereo_note.text == ""
+        screen.change("stereo", True)
+        assert saved == [("stereo", True)] and screen.stereo_note.text == STEREO_NOTE
+    finally:
+        screen.close()
+        prefs.load({})

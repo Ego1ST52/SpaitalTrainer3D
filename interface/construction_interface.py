@@ -7,6 +7,7 @@ from ursina.shaders import unlit_shader
 from core import settings
 from engine.objects import ShadedBlock, ShadedShape, dispose
 from interface.base_screen import BaseScreen
+from logic.stl import export_stl
 from interface.ui_kit import label, mode_color, Panel, TopBar, UIButton
 from logic.construction import Build, ConstructionTaskGenerator, GRID_HALF, \
     build_hint, check_build
@@ -24,9 +25,11 @@ class ConstructionGameScreen(BaseScreen):
     """Режим 4: собрать из кубиков фигуру по образцу.
     Клик - поставить кубик, Shift+клик - убрать, Ctrl+Z - отменить."""
 
+    MODE = "construction"
+
     def __init__(self, manager, level="easy", seed=None, locked=False, playlist=None):
         super().__init__(manager)
-        self.accent = mode_color("construction")
+        self.accent = mode_color(self.MODE)
         self._start(level, seed, locked, playlist)
         self.task = None
         self.build = None
@@ -50,7 +53,7 @@ class ConstructionGameScreen(BaseScreen):
                                                       grid_color.b, 0.35),
                                      shader=unlit_shader))
 
-        self.top_bar = self.own(TopBar("construction", self.go_back))
+        self.top_bar = self.own(TopBar(self.MODE, self.go_back))
         self.own(Panel(PANEL_WIDTH, 0.78, position=(PANEL_X, -0.06)))
         self.own(label("Образец", (PANEL_LEFT, 0.29), 0.8, "muted"))
         self.question = self.own(label("", (PANEL_LEFT, 0.005), 0.95, "strong"))
@@ -65,6 +68,12 @@ class ConstructionGameScreen(BaseScreen):
                                                position=(PANEL_X, -0.415),
                                                scale=(PANEL_WIDTH - 0.06, 0.06),
                                                variant="primary"))
+        # После проверки постройку можно сохранить для 3D-принтера
+        self.export_folder = None        # None - «Документы\SpatialTrainer3D»
+        self.stl_button = self.own(UIButton("Сохранить для 3D-печати", self.save_stl,
+                                            position=(PANEL_X, -0.35),
+                                            scale=(PANEL_WIDTH - 0.06, 0.045), text_size=0.75))
+        self.stl_button.enabled = False
 
         self.own(label("Клик - поставить кубик  •  Shift+клик - убрать  •  Ctrl+Z - отменить"
                        "  •  правая кнопка мыши - вращать камеру, колесо - приблизить",
@@ -74,7 +83,7 @@ class ConstructionGameScreen(BaseScreen):
     def _start(self, level, seed=None, locked=False, playlist=None):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
         self.playlist = playlist     # шаг «Моей тренировки» или None
-        self.session, seed = new_training("construction", level, seed, locked, playlist)
+        self.session, seed = new_training(self.MODE, level, seed, locked, playlist)
         self.generator = ConstructionTaskGenerator(seed=seed)
 
     # ---------- задания ----------
@@ -98,7 +107,32 @@ class ConstructionGameScreen(BaseScreen):
         self.question.text = textwrap.fill(self.task.question, 28)
         self.feedback.text = ""
         self.action_button.text = "Проверить"
+        self.stl_button.enabled = False
         self._refresh()
+        self.on_task_started()
+
+    # ---------- точки расширения (см. режим «По памяти») ----------
+    def save_stl(self):
+        """Сохранить постройку (или образец, если ничего не построено) в STL."""
+        cells = sorted(self.build.cells) or list(self.task.target)
+        try:
+            path = export_stl(cells, self.export_folder)
+        except OSError as error:
+            self.counter.text = f"Не удалось сохранить: {error}"
+            return None
+        self.counter.text = textwrap.fill(
+            f"Сохранено: Документы › {path.parent.name} › {path.name}", 40)
+        return path
+
+    def on_task_started(self):
+        """Вызывается, когда показано новое задание."""
+
+    def on_checked(self, correct):
+        """Вызывается после проверки постройки."""
+
+    def can_build(self):
+        """Можно ли сейчас ставить и убирать кубики."""
+        return not self.answered
 
     def _refresh(self):
         self.counter.text = (f"Поставлено: {len(self.build.cells)} из "
@@ -136,14 +170,15 @@ class ConstructionGameScreen(BaseScreen):
         return None
 
     def update(self):
-        removing = held_keys["shift"] and not self.answered
+        building = self.can_build()
+        removing = held_keys["shift"] and building
         hovered = self._hovered_block()
-        if not self.answered:
+        if building:
             for block in self.blocks.values():
                 remove_me = removing and block is hovered
                 block.set_color(REMOVE_HINT_COLOR if remove_me else self.accent)
 
-        cell = None if (removing or self.answered) else self._target_cell()
+        cell = None if (removing or not building) else self._target_cell()
         if cell is not None and self.build.can_add(cell):
             self.ghost.position = cell
             self.ghost.enabled = True
@@ -159,7 +194,7 @@ class ConstructionGameScreen(BaseScreen):
             self.new_task()
         elif key == "z" and held_keys["control"]:     # Ctrl+Z
             self.undo()
-        elif key == "left mouse down" and not self.answered:
+        elif key == "left mouse down" and self.can_build():
             if held_keys["shift"]:
                 block = self._hovered_block()
                 if block is not None:
@@ -171,11 +206,11 @@ class ConstructionGameScreen(BaseScreen):
             self._sync_blocks()
 
     def undo(self):
-        if not self.answered and self.build.undo():
+        if self.can_build() and self.build.undo():
             self._sync_blocks()
 
     def clear(self):
-        if not self.answered:
+        if self.can_build():
             self.build.clear()
             self._sync_blocks()
 
@@ -194,7 +229,7 @@ class ConstructionGameScreen(BaseScreen):
         self.answered = True
         seconds = perf_counter() - self.task_started
         correct = check_build(self.build.cells, self.task.target)
-        points = self.session.record(correct, seconds)
+        points = self.session.record(correct, seconds, self.task.tags)
         self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
         result_color = settings.CORRECT_COLOR if correct else settings.WRONG_COLOR
@@ -211,6 +246,8 @@ class ConstructionGameScreen(BaseScreen):
         self.action_button.text = (finish_label(self) if self.session.is_finished
                                    else "Дальше")
         self._refresh()
+        self.stl_button.enabled = True
+        self.on_checked(correct)
 
     def next_task(self):
         if self.session.is_finished:

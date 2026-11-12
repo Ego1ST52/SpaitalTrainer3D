@@ -32,6 +32,18 @@ CREATE TABLE IF NOT EXISTS settings (
     PRIMARY KEY (user_id, key)
 );
 
+-- Журнал заданий: каждое задание отдельно (для анализа ошибок и отчёта)
+CREATE TABLE IF NOT EXISTS task_log (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    result_id INTEGER NOT NULL REFERENCES results(id),
+    user_id   INTEGER NOT NULL REFERENCES users(id),
+    mode      TEXT NOT NULL,
+    level     TEXT NOT NULL,
+    correct   INTEGER NOT NULL,
+    seconds   REAL NOT NULL,
+    tags      TEXT NOT NULL            -- метки через запятую: 'axis:x,moves:2'
+);
+
 -- Состояние приложения, например, кто играл последним
 CREATE TABLE IF NOT EXISTS app_state (
     key   TEXT PRIMARY KEY,
@@ -67,6 +79,11 @@ class Database:
         if "color" not in columns:
             with self._conn:
                 self._conn.execute("ALTER TABLE users ADD COLUMN color TEXT")
+        # Код тренировки в результатах (для «задания дня»)
+        columns = [row["name"] for row in self._conn.execute("PRAGMA table_info(results)")]
+        if "code" not in columns:
+            with self._conn:
+                self._conn.execute("ALTER TABLE results ADD COLUMN code TEXT")
 
     def get_or_create_user(self, name):
         name = name.strip()
@@ -81,13 +98,19 @@ class Database:
         return row["id"]
 
     # ---------- игроки ----------
-    def create_user(self, name):
-        """Новый игрок. Ошибка ValueError, если имя пустое или уже занято."""
+    @staticmethod
+    def _clean_name(name):
+        """Имя без лишних пробелов. Ошибка ValueError, если оно пустое или длинное."""
         name = name.strip()
         if not name:
             raise ValueError("Введите имя игрока.")
         if len(name) > 20:
             raise ValueError("Имя слишком длинное (до 20 букв).")
+        return name
+
+    def create_user(self, name):
+        """Новый игрок. Ошибка ValueError, если имя пустое или уже занято."""
+        name = self._clean_name(name)
         count = self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         color = AVATAR_COLORS[count % len(AVATAR_COLORS)]
         try:
@@ -98,6 +121,35 @@ class Database:
         except sqlite3.IntegrityError:
             raise ValueError("Игрок с таким именем уже есть.") from None
         return cursor.lastrowid
+
+    def rename_user(self, user_id, name):
+        """Переименовать игрока. Ошибка ValueError, если имя неверное или занято."""
+        name = self._clean_name(name)
+        try:
+            with self._conn:
+                cursor = self._conn.execute("UPDATE users SET name = ? WHERE id = ?",
+                                            (name, user_id))
+        except sqlite3.IntegrityError:
+            raise ValueError("Игрок с таким именем уже есть.") from None
+        if cursor.rowcount == 0:
+            raise ValueError("Такого игрока нет.")
+
+    def delete_user(self, user_id):
+        """Удалить игрока вместе с его тренировками и настройками.
+        Единственного игрока удалить нельзя - статистику вести будет не за кем."""
+        count = self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if count <= 1:
+            raise ValueError("Нельзя удалить единственного игрока.")
+        with self._conn:      # всё или ничего: одна транзакция
+            self._conn.execute("DELETE FROM task_log WHERE user_id = ?", (user_id,))
+            self._conn.execute("DELETE FROM results WHERE user_id = ?", (user_id,))
+            self._conn.execute("DELETE FROM settings WHERE user_id = ?", (user_id,))
+            cursor = self._conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        if cursor.rowcount == 0:
+            raise ValueError("Такого игрока нет.")
+        if self.get_state("last_user") == user_id:
+            with self._conn:
+                self._conn.execute("DELETE FROM app_state WHERE key = 'last_user'")
 
     def list_users(self):
         """Все игроки с числом тренировок (по порядку создания)."""
@@ -147,20 +199,36 @@ class Database:
         """Сохранить итоги тренировки (TrainingSession). Возвращает id записи."""
         if session.total == 0:
             raise ValueError("Нельзя сохранить пустую тренировку")
-        with self._conn:
+        with self._conn:      # итог и все задания - одной транзакцией
             cursor = self._conn.execute(
                 "INSERT INTO results (user_id, mode, level, played_at, "
-                "tasks_total, tasks_correct, points, total_seconds) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "tasks_total, tasks_correct, points, total_seconds, code) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (user_id, session.mode, session.summary_level, played_at or _now(),
                  session.total, session.correct, session.points,
-                 session.total_time))
-        return cursor.lastrowid
+                 session.total_time, getattr(session, "code", None)))
+            result_id = cursor.lastrowid
+            self._conn.executemany(
+                "INSERT INTO task_log (result_id, user_id, mode, level, correct, seconds, tags) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(result_id, user_id, session.mode, r.level or session.level, int(r.correct),
+                  r.seconds, ",".join(r.tags)) for r in session.results])
+        return result_id
+
+    def get_task_log(self, user_id):
+        """Все задания игрока: словари с mode, level, correct, seconds, tags (список)."""
+        rows = self._conn.execute(
+            "SELECT t.mode, t.level, t.correct, t.seconds, t.tags, r.played_at "
+            "FROM task_log t JOIN results r ON r.id = t.result_id "
+            "WHERE t.user_id = ? ORDER BY t.id", (user_id,))
+        return [{"mode": row["mode"], "level": row["level"], "correct": bool(row["correct"]),
+                 "seconds": row["seconds"], "played_at": row["played_at"],
+                 "tags": [t for t in row["tags"].split(",") if t]} for row in rows]
 
     def get_history(self, user_id, limit=None):
         """Тренировки пользователя, новые первыми (список словарей)."""
         query = ("SELECT id, mode, level, played_at, tasks_total, "
-                 "tasks_correct, points, total_seconds FROM results "
+                 "tasks_correct, points, total_seconds, code FROM results "
                  "WHERE user_id = ? ORDER BY played_at DESC, id DESC")
         params = [user_id]
         if limit is not None:

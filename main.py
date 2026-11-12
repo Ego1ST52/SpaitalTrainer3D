@@ -1,4 +1,3 @@
-import os
 import sqlite3
 
 from ursina import *
@@ -8,6 +7,7 @@ from ursina.shaders import lit_with_shadows_shader
 from core import settings
 from core.fonts import setup_input_font
 from core.preferences import prefs
+from core import stereo
 from core.theme import apply_theme
 from core.scene_manager import SceneManager
 from data.database import Database
@@ -18,6 +18,11 @@ from interface.game_interface import RotationGameScreen
 from interface.matching_interface import MatchingGameScreen
 from interface.projection_interface import ProjectionGameScreen
 from interface.construction_interface import ConstructionGameScreen
+from interface.nets_interface import NetsGameScreen
+from interface.sections_interface import SectionsGameScreen
+from interface.count_interface import CAMERA_VIEW as COUNT_CAMERA, CountGameScreen
+from interface.memory_interface import MemoryGameScreen
+from interface.shadow_interface import ShadowGameScreen
 from interface.results_screen import ResultsScreen
 from interface.statistics_screen import StatisticsScreen
 from interface.progress_screen import ProgressScreen
@@ -26,15 +31,24 @@ from interface.profiles_screen import ProfilesScreen
 from interface.custom_screen import CustomTrainingScreen
 from interface.custom_results_screen import CustomResultsScreen
 from interface.achievements_screen import AchievementsScreen
+from interface.analysis_screen import AnalysisScreen
 from logic.achievements import newly_unlocked, unlocked_skins
+from logic.report import build_rows, report_path, write_csv
+from interface import game_common
+from interface.duel_screens import DuelPassScreen, DuelResultsScreen, DuelSetupScreen
+
+# Стерео-3D (красно-синие очки) включается только до создания окна
+STEREO = stereo.wanted(settings.DB_PATH)
+if STEREO:
+    stereo.enable_before_window()
 
 app = Ursina(title=settings.WINDOW_TITLE, borderless=False)
+if STEREO:
+    stereo.configure(camera)
 window.color = color.hex(settings.BACKGROUND)
 # Служебные счётчики Ursina (кадры, объекты) показываем только для отладки
 window.editor_ui.enabled = settings.SHOW_FPS
 
-if os.path.exists(settings.FONT_PATH):
-    Text.default_font = settings.FONT_PATH
 # Поля ввода (имя игрока, код) рисуются моноширинным шрифтом; встроенный в
 # Ursina не знает русских букв, поэтому берём подходящий шрифт из Windows
 setup_input_font()
@@ -106,14 +120,21 @@ def load_history():
 
 
 # ---------- игроки и настройки ----------
-def save_preference(key, value):
-    """Изменить настройку текущего игрока и сохранить её в базе."""
-    prefs.set(key, value)
+def write_preference(key, value):
+    """Записать настройку текущего игрока в базу (prefs.save вызывает это сам)."""
     if db is not None and player["id"] is not None:
         try:
             db.set_setting(player["id"], key, value)
         except sqlite3.Error as error:
             print("Не удалось сохранить настройку:", error)
+
+
+prefs.saver = write_preference
+
+
+def save_preference(key, value):
+    """Изменить настройку текущего игрока и сохранить её в базе."""
+    prefs.save(key, value)
 
 
 def change_theme(color_value):
@@ -144,6 +165,45 @@ def create_user(name):
     return None
 
 
+def rename_user(user_id, name):
+    """Переименовать игрока. Возвращает текст ошибки или None."""
+    try:
+        db.rename_user(user_id, name)
+        if user_id == player["id"]:
+            activate_user(user_id)          # обновить имя в меню
+    except ValueError as error:
+        return str(error)
+    except sqlite3.Error:
+        return "Не удалось сохранить новое имя."
+    return None
+
+
+def delete_user(user_id):
+    """Удалить игрока. Если удалили текущего - выбрать первого из оставшихся."""
+    try:
+        db.delete_user(user_id)
+        if user_id == player["id"]:
+            activate_user(db.list_users()[0]["id"])
+    except ValueError as error:
+        return str(error)
+    except sqlite3.Error:
+        return "Не удалось удалить игрока."
+    return None
+
+
+def make_report():
+    """Отчёт для учителя по всем игрокам. Возвращает сообщение для экрана."""
+    if db is None:
+        return "База данных недоступна - отчёт не собрать."
+    try:
+        players = [(u["name"], db.get_history(u["id"]), db.get_task_log(u["id"]))
+                   for u in db.list_users()]
+        path = write_csv(build_rows(players), report_path())
+    except (sqlite3.Error, OSError) as error:
+        return f"Не удалось сохранить отчёт: {error}"
+    return f"Сохранено: Документы › SpatialTrainer3D › {path.name}"
+
+
 def list_users():
     if db is None:
         return None
@@ -160,6 +220,7 @@ def menu_view():
 
 
 def open_menu():
+    game_common.active_duel = None      # вышли в меню - дуэль (если была) закончилась
     # Меню - куб-навигатор: камера ближе, чем на других экранах, куб крупный
     rig.view((0, 0, -22), 0, interactive=False)
     return MainMenu(manager, load_history(), player)
@@ -196,7 +257,8 @@ def save_and_check_achievements(sessions):
 
 def open_profiles():
     menu_view()
-    return ProfilesScreen(manager, list_users(), player["id"], select_user, create_user)
+    return ProfilesScreen(manager, list_users(), player["id"], select_user, create_user,
+                          rename_user, delete_user, make_report)
 
 
 # seed и locked приходят из «тренировки по коду», playlist - из «Моей тренировки»
@@ -225,6 +287,75 @@ def open_construction(level="easy", seed=None, locked=False, playlist=None):
     return ConstructionGameScreen(manager, level, seed, locked, playlist)
 
 
+def open_nets(level="easy", seed=None, locked=False, playlist=None):
+    # Камера закреплена и смотрит на развёртку сверху-спереди, как на лист на столе
+    rig.view((0, 0, -13), 48, interactive=False)
+    return NetsGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_sections(level="easy", seed=None, locked=False, playlist=None):
+    # Камеру можно вращать; x = 1.9 - куб левее, правая часть экрана для вариантов
+    rig.view((2.6, 0, -16), 24)
+    return SectionsGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_count(level="easy", seed=None, locked=False, playlist=None):
+    # Камера закреплена: если обойти башню, считать было бы слишком просто
+    position, pitch = COUNT_CAMERA
+    rig.view(position, pitch, interactive=False)
+    return CountGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_memory(level="easy", seed=None, locked=False, playlist=None):
+    rig.view((1.8, 0, -17), 35)          # как в «Конструировании»
+    return MemoryGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_shadow(level="easy", seed=None, locked=False, playlist=None):
+    # Камера закреплена: лампа и стена стоят на своих местах
+    rig.view((3.2, 0, -19), 28, interactive=False)
+    return ShadowGameScreen(manager, level, seed, locked, playlist)
+
+
+# ---------- игра вдвоём ----------
+def mode_openers():
+    """Режим -> функция, открывающая его экран (нужно дуэли)."""
+    return {"rotation": open_rotation, "matching": open_matching,
+            "projection": open_projection, "construction": open_construction,
+            "nets": open_nets, "sections": open_sections, "count": open_count,
+            "memory": open_memory, "shadow": open_shadow}
+
+
+def open_duel_setup():
+    menu_view()
+    return DuelSetupScreen(manager, list_users(), player["id"])
+
+
+def open_duel_start(duel):
+    """Начать дуэль: ходит первый игрок, задания - по общему коду."""
+    game_common.active_duel = duel
+    select_user(duel.current_player["id"])
+    return open_duel_continue(duel)
+
+
+def open_duel_continue(duel):
+    return mode_openers()[duel.mode](duel.level, duel.seed, True)
+
+
+def open_duel_turn(session):
+    """Ход окончен: сохранить результат игрока и передать ход (или итоги)."""
+    duel = session.duel
+    save_and_check_achievements([session])
+    duel.finish_turn(session)
+    menu_view()
+    if not duel.is_done:
+        select_user(duel.current_player["id"])
+        return DuelPassScreen(manager, duel)
+    game_common.active_duel = None
+    select_user(duel.players[0]["id"])            # после дуэли - снова первый игрок
+    return DuelResultsScreen(manager, duel)
+
+
 def open_custom():
     menu_view()
     return CustomTrainingScreen(manager, prefs.get("custom_plan"),
@@ -245,6 +376,22 @@ def open_results(session):
     return ResultsScreen(manager, session, saved, achievements)
 
 
+def load_task_log():
+    """Журнал заданий текущего игрока или None, если база недоступна."""
+    if db is None or player["id"] is None:
+        return None
+    try:
+        return db.get_task_log(player["id"])
+    except sqlite3.Error as error:
+        print("Не удалось прочитать журнал заданий:", error)
+        return None
+
+
+def open_analysis():
+    menu_view()
+    return AnalysisScreen(manager, load_task_log())
+
+
 def open_statistics():
     menu_view()
     return StatisticsScreen(manager, load_history())
@@ -258,13 +405,23 @@ def open_progress():
 manager.register("menu", open_menu)
 manager.register("settings", open_settings)
 manager.register("achievements", open_achievements)
+manager.register("analysis", open_analysis)
 manager.register("profiles", open_profiles)
 manager.register("rotation", open_rotation)
 manager.register("matching", open_matching)
 manager.register("projection", open_projection)
 manager.register("construction", open_construction)
+manager.register("nets", open_nets)
+manager.register("sections", open_sections)
+manager.register("count", open_count)
+manager.register("memory", open_memory)
+manager.register("shadow", open_shadow)
 manager.register("results", open_results)
 manager.register("custom", open_custom)
+manager.register("duel_setup", open_duel_setup)
+manager.register("duel_start", open_duel_start)
+manager.register("duel_continue", open_duel_continue)
+manager.register("duel_turn", open_duel_turn)
 manager.register("custom_results", open_custom_results)
 manager.register("statistics", open_statistics)
 manager.register("progress", open_progress)

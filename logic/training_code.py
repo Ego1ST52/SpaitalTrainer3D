@@ -8,12 +8,14 @@
 
 import random
 
-MODE_DIGITS = {"rotation": 1, "matching": 2, "projection": 3, "construction": 4}
+MODE_DIGITS = {"rotation": 1, "matching": 2, "projection": 3, "construction": 4,
+               "nets": 5, "sections": 6, "count": 7, "memory": 8, "shadow": 9}
 LEVEL_DIGITS = {"easy": 1, "medium": 2, "hard": 3}
 MAX_SEED = 9999
 
 # В тренировке по коду число заданий фиксировано, чтобы у всех было поровну
-CODE_LENGTH = {"rotation": 10, "matching": 10, "projection": 10, "construction": 5}
+CODE_LENGTH = {"rotation": 10, "matching": 10, "projection": 10, "construction": 5,
+               "nets": 10, "sections": 10, "count": 10, "memory": 5, "shadow": 10}
 
 _MODE_BY_DIGIT = {d: m for m, d in MODE_DIGITS.items()}
 _LEVEL_BY_DIGIT = {d: l for l, d in LEVEL_DIGITS.items()}
@@ -38,7 +40,7 @@ def parse_code(text):
     mode = _MODE_BY_DIGIT.get(int(digits[0]))
     level = _LEVEL_BY_DIGIT.get(int(digits[1]))
     if mode is None:
-        raise ValueError("Первая цифра кода - режим, от 1 до 4.")
+        raise ValueError("Первая цифра кода - режим, от 1 до 9.")
     if level is None:
         raise ValueError("Вторая цифра кода - уровень, от 1 до 3.")
     return mode, level, int(digits[2:])

@@ -13,6 +13,7 @@ class TaskResult:
     seconds: float
     points: int
     level: str = ""       # уровень, на котором было это задание
+    tags: tuple = ()      # метки задания для анализа ошибок, например ('axis:z',)
 
 
 def format_duration(seconds):
@@ -41,7 +42,7 @@ class TrainingSession:
         """Уровень следующего задания."""
         return self.adaptive.level if self.adaptive else self.level
 
-    def record(self, correct, seconds):
+    def record(self, correct, seconds, tags=()):
         """Записать результат задания, вернуть начисленные баллы.
         Баллы считаются по уровню, на котором было задание. Если сложность
         адаптивная, после ответа уровень может смениться: см. level_change."""
@@ -49,7 +50,7 @@ class TrainingSession:
             raise ValueError("Тренировка уже завершена")
         level = self.current_level
         points = task_points(level, correct, seconds)
-        self.results.append(TaskResult(bool(correct), seconds, points, level))
+        self.results.append(TaskResult(bool(correct), seconds, points, level, tuple(tags)))
         self.level_change = self.adaptive.record(correct) if self.adaptive else None
         return points
 

@@ -8,6 +8,7 @@ from ursina import *
 from ursina.shaders import unlit_shader
 
 from core import settings
+from core import sounds
 from core.preferences import prefs
 from data.statistics import accuracy_of, filter_history, summarize
 from engine.backdrop import FloatingCubes
@@ -20,9 +21,22 @@ from interface.ui_kit import (_draw_icon, Avatar, FRONT, label, LogoMark, mode_c
                               mode_dim, Panel, PlayerChip, rounded_quad, Segmented, UIButton,
                               with_alpha)
 from logic.cube_nav import CubeNavigator, FACE_CONTENT
+from logic.daily import daily_done, daily_task
 from logic.goals import tasks_on
 
 LEVELS = [("easy", "Начальный"), ("medium", "Средний"), ("hard", "Продвинутый")]
+
+# Кнопки на грани «Мастерская»: (режим, подпись). Режим появляется здесь,
+# только когда он готов - пустых кнопок нет.
+WORKSHOP = [
+    ("custom", "Моя тренировка"),
+    ("nets", "Развёртка"),
+    ("sections", "Сечения"),
+    ("count", "Сколько кубиков?"),
+    ("memory", "По памяти"),
+    ("shadow", "Тень"),
+    ("duel", "Игра вдвоём"),
+]
 
 # Что написано на гранях: (номер, название, описание)
 FACE_TEXT = {
@@ -30,7 +44,7 @@ FACE_TEXT = {
     "matching": ("02", "Одинаковые фигуры", "найдите фигуру после поворота"),
     "projection": ("03", "Проекции", "как фигура выглядит с разных сторон"),
     "construction": ("04", "Конструирование", "соберите фигуру по образцу"),
-    "custom": ("05", "Моя тренировка", "несколько режимов подряд"),
+    "workshop": ("05", "Мастерская", "своя тренировка и новые режимы"),
     "hub": ("", "Профиль", ""),
 }
 KEYS = {"left arrow": "left", "right arrow": "right", "up arrow": "up", "down arrow": "down",
@@ -109,6 +123,9 @@ class MainMenu(BaseScreen):
         if kind == "hub":
             self._build_hub(content)
             return
+        if kind == "workshop":
+            self._build_workshop(content, half, accent)
+            return
         label(number, (-half + 0.02, half - 0.035), 0.9, accent, parent=content)
         Panel(0.1, 0.1, position=(0, 0.07, FRONT / 2), fill=mode_dim(kind), border=None,
               radius=0.02, alpha=1, parent=content)
@@ -121,9 +138,6 @@ class MainMenu(BaseScreen):
 
     def _face_stat(self, kind):
         """Короткая строка о ваших результатах в этом режиме."""
-        if kind == "custom":
-            plan = prefs.get("custom_plan")
-            return f"режимов в наборе: {len(plan['modes'])}"
         games = filter_history(self.history, kind)
         if not games:
             return "ещё не пробовали"
@@ -148,6 +162,24 @@ class MainMenu(BaseScreen):
             # Ursina считает размер текста кнопки для слоя интерфейса; на грани
             # (она увеличена в CONTENT_SCALE раз) пересчитываем его по масштабу грани
             button.text_entity.world_scale = Vec3(content.world_scale_x * 0.8)
+
+    def _build_workshop(self, content, half, accent):
+        """Верхняя грань «Мастерская»: кнопки новых режимов и своей тренировки."""
+        label("05", (-half + 0.02, half - 0.035), 0.9, accent, parent=content)
+        label("Мастерская", (0, 0.135), 1.3, "strong", origin=(0, 0), parent=content)
+        label("своя тренировка и новые режимы", (0, 0.1), 0.7, "muted", origin=(0, 0),
+              parent=content)
+        for i, (mode, text) in enumerate(WORKSHOP):
+            button = UIButton(text, lambda m=mode: self._workshop_action(m), parent=content,
+                              position=(0, 0.06 - i * 0.036, FRONT), scale=(0.3, 0.031),
+                              text_size=0.7, swatch=mode_color(mode))
+            button.face_name = "top"
+            button.text_entity.world_scale = Vec3(content.world_scale_x * 0.7)
+
+    def _workshop_action(self, mode):
+        # Кнопки работают, только когда «Мастерская» перед игроком
+        if self.nav.front_content == "workshop" and not self.entering and self.dialog is None:
+            self.start(mode)
 
     def _hub_action(self, screen):
         # Кнопки на грани работают, только когда грань «Профиль» перед игроком
@@ -185,6 +217,14 @@ class MainMenu(BaseScreen):
         self._build_net()
         self.own(UIButton("По коду", self.open_code_dialog, position=(right - 0.2, -0.445),
                           scale=(0.14, 0.05), text_size=0.8))
+        # Задание дня: одно и то же для всех сегодня
+        mode, _, _, _ = daily_task()
+        done = daily_done(self.history)
+        self.own(UIButton("Задание дня", self.start_daily, position=(right - 0.37, -0.445),
+                          scale=(0.18, 0.05), text_size=0.8,
+                          variant="secondary" if done else "primary"))
+        self.own(label(f"сегодня: {settings.MODE_NAMES[mode]}" + ("  •  выполнено" if done else ""),
+                       (right, -0.4), 0.7, "muted", origin=(0.5, 0)))
         self.own(UIButton("Выход", application.quit, variant="ghost",
                           position=(right - 0.06, -0.445), scale=(0.11, 0.05), text_size=0.8))
 
@@ -246,11 +286,11 @@ class MainMenu(BaseScreen):
 
         if kind == "hub":
             self.hint.text = "статистика, достижения, настройки и игроки - кнопки на грани"
-        elif kind == "custom":
-            self.hint.text = "Enter или клик по грани - собрать свою тренировку"
+        elif kind == "workshop":
+            self.hint.text = "выберите режим кнопкой на грани  •  сложность - внизу"
         else:
             self.hint.text = "Enter или клик по грани - начать  •  стрелки - повернуть куб"
-        self.level_switch.enabled = kind not in ("hub", "custom")
+        self.level_switch.enabled = kind != "hub"
 
     # ---------- управление ----------
     def turn(self, direction):
@@ -263,6 +303,7 @@ class MainMenu(BaseScreen):
         elif direction == "left":
             self.cube.yaw_turns -= 1
         self.cube.set_state(self.cube.yaw_turns, self.nav.pitch)
+        sounds.play("turn")
         MainMenu.remembered_nav = (self.nav.yaw, self.nav.pitch)
         MainMenu.remembered_turns = self.cube.yaw_turns
         self._refresh()
@@ -276,7 +317,7 @@ class MainMenu(BaseScreen):
     def open_front(self):
         """Открыть режим на лицевой грани: камера «влетает» в грань."""
         kind = self.nav.front_content
-        if self.entering or self.dialog is not None or kind == "hub":
+        if self.entering or self.dialog is not None or kind in ("hub", "workshop"):
             return
         self.entering = True
         rig = camera.parent                  # EditorCamera из engine/camera.py
@@ -327,6 +368,8 @@ class MainMenu(BaseScreen):
         # «Моя тренировка» - сначала экран-конструктор, остальные режимы сразу
         if mode == "custom":
             self.navigate("custom")
+        elif mode == "duel":
+            self.navigate("duel_setup")
         else:
             self.navigate(mode, level=self.level)
 
@@ -339,6 +382,11 @@ class MainMenu(BaseScreen):
         if self.dialog is not None:
             dispose(self.dialog)
             self.dialog = None
+
+    def start_daily(self):
+        if self.dialog is None and not self.entering:
+            mode, level, seed, _ = daily_task()
+            self.navigate(mode, level=level, seed=seed, locked=True)
 
     def start_by_code(self, mode, level, seed):
         self.close_code_dialog()

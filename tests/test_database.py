@@ -159,3 +159,38 @@ def test_old_database_is_upgraded(tmp_path):
     assert users[0]["name"] == "Игрок" and users[0]["color"]
     database.create_user("Новый")
     database.close()
+
+
+# ---------- переименование и удаление игроков ----------
+def test_rename_user(db):
+    anya = db.create_user("Peresvet")
+    db.create_user("Борис")
+    db.rename_user(anya, "  Пересвет ")
+    assert [u["name"] for u in db.list_users()] == ["Пересвет", "Борис"]
+    with pytest.raises(ValueError):
+        db.rename_user(anya, "Борис")                 # имя занято
+    with pytest.raises(ValueError):
+        db.rename_user(anya, "   ")
+    with pytest.raises(ValueError):
+        db.rename_user(999, "Кто-то")                 # такого игрока нет
+
+
+def test_delete_user_removes_everything(db):
+    anya, boris = db.create_user("Аня"), db.create_user("Борис")
+    db.save_session(anya, make_session())
+    db.save_session(boris, make_session())
+    db.set_setting(anya, "cube_skin", "dice")
+    db.set_state("last_user", anya)
+
+    db.delete_user(anya)
+    assert [u["name"] for u in db.list_users()] == ["Борис"]
+    assert db.get_history(anya) == [] and db.get_settings(anya) == {}
+    assert len(db.get_history(boris)) == 1           # чужие тренировки на месте
+    assert db.get_state("last_user") is None          # «последний игрок» забыт
+
+
+def test_cannot_delete_only_user(db):
+    only = db.create_user("Аня")
+    with pytest.raises(ValueError):
+        db.delete_user(only)
+    assert len(db.list_users()) == 1

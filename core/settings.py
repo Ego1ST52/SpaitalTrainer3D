@@ -30,10 +30,14 @@ MODE_COLORS = {
     "projection": ("#fbbf24", "#3d2e0a"),
     "construction": ("#34d399", "#0b3a2c"),
     "custom": ("#f472b6", "#3d1630"),
+    "workshop": ("#f472b6", "#3d1630"),     # грань «Мастерская» в меню
+    "nets": ("#fb923c", "#3f210a"),
+    "sections": ("#60a5fa", "#0f2847"),
+    "count": ("#e879f9", "#3b1240"),
+    "memory": ("#a3e635", "#26360a"),
+    "shadow": ("#fda4af", "#40171d"),
+    "duel": ("#f59e0b", "#3d2706"),         # «Игра вдвоём»
 }
-
-# Шрифт с кириллицей (путь относительно папки с main.py)
-FONT_PATH = "OpenSans-Regular.ttf"
 
 # Длительность поворота куба, секунд
 ROTATION_DURATION = 0.3
@@ -70,7 +74,9 @@ SESSION_LENGTH = 10
 LEVEL_NAMES = {"easy": "Начальный", "medium": "Средний", "hard": "Продвинутый"}
 MODE_NAMES = {"rotation": "Вращение куба", "matching": "Одинаковые фигуры",
               "projection": "Проекции", "construction": "Конструирование",
-              "custom": "Моя тренировка"}
+              "custom": "Моя тренировка", "workshop": "Мастерская",
+              "nets": "Развёртка", "sections": "Сечения", "count": "Сколько кубиков?",
+              "memory": "По памяти", "shadow": "Тень", "duel": "Игра вдвоём"}
 # База данных
 DB_PATH = "data/spatial_trainer.db"
 DEFAULT_USER = "Игрок"

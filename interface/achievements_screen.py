@@ -3,7 +3,7 @@ import textwrap
 from ursina import *
 from ursina.shaders import unlit_shader
 
-from core import settings
+from core import settings, sounds
 from engine.backdrop import FloatingCubes
 from engine.objects import dispose
 from interface.base_screen import BaseScreen
@@ -136,6 +136,7 @@ class AchievementToast(Entity):
     def __init__(self, achievements, position=None):
         super().__init__(parent=camera.ui,
                          position=position or (window.top_right.x - 0.24, 0.33))
+        sounds.play("achievement")
         width = 0.42
         lines = []
         for a in achievements:

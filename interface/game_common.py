@@ -7,6 +7,10 @@ from logic.training_code import CODE_LENGTH, make_code, random_seed
 
 LEVEL_KEYS = {"1": "easy", "2": "medium", "3": "hard"}
 
+# Дуэль, которая сейчас идёт («Игра вдвоём», см. logic/duel.py и main.py).
+# Тренировка с кодом этой дуэли - ход одного из её игроков.
+active_duel = None
+
 
 def new_training(mode, level, seed=None, locked=False, playlist=None):
     """Создать тренировку. Возвращает (session, seed).
@@ -35,6 +39,10 @@ def new_training(mode, level, seed=None, locked=False, playlist=None):
         session = TrainingSession(mode, level, CODE_LENGTH[mode],
                                   code=make_code(mode, level, seed), locked=True)
         session.note = f"тренировка по коду {session.code}"
+        duel = active_duel
+        if duel is not None and not duel.is_done and session.code == duel.code:
+            session.duel = duel
+            session.note = f"дуэль  •  ходит {duel.current_player['name']}"
         return session, seed
 
     adaptive = AdaptiveLevel(level) if prefs.get("adaptive") else None
@@ -55,6 +63,9 @@ def finish_label(screen):
 
 def finish_training(screen):
     """Тренировка (или этап своей тренировки) закончена - куда дальше."""
+    if getattr(screen.session, "duel", None) is not None:
+        screen.navigate("duel_turn", session=screen.session)     # ход в дуэли окончен
+        return
     playlist = screen.playlist
     if playlist is None:
         screen.navigate("results", session=screen.session)

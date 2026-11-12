@@ -13,7 +13,9 @@ from ursina import *
 from ursina.shaders import unlit_shader
 
 from core import settings
+from core import sounds
 from core.preferences import prefs
+from logic.tutorials import TUTORIALS
 
 # Тона текста. Цвета читаются из settings в момент создания надписи, а не
 # при запуске программы, - так работает смена темы (см. core/theme.py).
@@ -267,6 +269,12 @@ class Segmented(Entity):
         if notify:
             self.on_change(key)
 
+    def clear(self):
+        """Снять выделение (когда выбор сделан в другом, связанном ряду)."""
+        self.selected = object()
+        for button in self.buttons.values():
+            button.set_variant("ghost")
+
 
 class TopBar(Entity):
     """Верхняя панель игрового экрана: режим и уровень слева, полоска
@@ -291,10 +299,30 @@ class TopBar(Entity):
         self.flash_text = label("", (0, 0.38), 0.85, self.accent, origin=(0, 0), parent=self)
         self.flash_left = 0.0
 
-        label("Баллы", (right - 0.32, 0.452), 0.8, "muted", parent=self)
-        self.points_text = label("0", (right - 0.32, 0.415), 1.3, self.accent, parent=self)
+        label("Баллы", (right - 0.36, 0.452), 0.8, "muted", parent=self)
+        self.points_text = label("0", (right - 0.36, 0.415), 1.3, self.accent, parent=self)
         UIButton("В меню", on_back, position=(right - 0.09, 0.43),
                  scale=(0.18, 0.055), variant="ghost", parent=self)
+
+        # Подсказка «Как играть»: кнопка «?» и автоматически при первом входе
+        self.mode = mode
+        self.dialog = None
+        if mode in TUTORIALS:
+            UIButton("?", self.show_help, position=(right - 0.215, 0.43), scale=(0.05, 0.055),
+                     variant="ghost", parent=self, text_size=1.1)
+            seen = prefs.get("seen_tutorials")
+            if mode not in seen:
+                prefs.save("seen_tutorials", seen + [mode])
+                self.show_help()
+
+    def show_help(self):
+        if self.dialog is None:
+            self.dialog = TutorialDialog(self.mode, self.close_help, parent=self)
+
+    def close_help(self):
+        if self.dialog is not None:
+            destroy_tree(self.dialog)
+            self.dialog = None
 
     def update_state(self, session, answered):
         """session - текущая тренировка, answered - ответ на задание уже дан."""
@@ -329,11 +357,15 @@ class TopBar(Entity):
 
 
     def flash_level(self, session):
-        """Если после ответа сменился уровень (адаптивная сложность) -
-        на пару секунд показать это под полоской прогресса."""
+        """Вызывается после каждого ответа: звук «верно/неверно», а если
+        сменился уровень (адаптивная сложность) - надпись под полоской."""
+        if session.results:
+            sounds.play("correct" if session.results[-1].correct else "wrong")
         change = session.level_change
         if change is None:
             return
+        if change == "up":
+            sounds.play("level_up")
         word = "повышен" if change == "up" else "понижен"
         self.flash_text.text = f"Уровень {word}: {settings.LEVEL_NAMES[session.current_level]}"
         self.flash_text.color = color.hex(settings.CORRECT_COLOR if change == "up"
@@ -345,6 +377,13 @@ class TopBar(Entity):
             self.flash_left -= time.dt
             if self.flash_left <= 0:
                 self.flash_text.text = ""
+
+
+def destroy_tree(entity):
+    """Удалить объект со всем содержимым (как engine.objects.dispose)."""
+    for child in list(entity.children):
+        destroy_tree(child)
+    destroy(entity)
 
 
 class Avatar(Entity):
@@ -383,3 +422,7 @@ class StatTile(Entity):
         left = -width / 2 + 0.02
         label(caption, (left, 0.022), 0.8, "muted", parent=self)
         self.value = label(value, (left, -0.016), 1.35, tone, parent=self)
+
+
+# Импорт в конце файла: окно подсказки само использует детали из этого модуля
+from interface.tutorial_dialog import TutorialDialog  # noqa: E402

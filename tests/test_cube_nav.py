@@ -27,7 +27,7 @@ def test_left_is_reverse_of_right():
 
 def test_top_and_bottom():
     nav = CubeNavigator(yaw=2)
-    assert nav.move("up") and nav.front_content == "custom"
+    assert nav.move("up") and nav.front_content == "workshop"
     assert not nav.move("up")                     # выше некуда
     assert not nav.move("left")                   # на верхней грани пояс не крутим
     assert nav.move("down") and nav.front_content == "projection"   # вернулись туда же
@@ -38,7 +38,7 @@ def test_top_and_bottom():
 def test_every_face_has_unique_content():
     assert len(set(FACE_CONTENT.values())) == 6
     assert set(CONTENT_FACE) == {"rotation", "matching", "projection", "construction",
-                                 "custom", "hub"}
+                                 "workshop", "hub"}
 
 
 @pytest.mark.parametrize("start", [(0, 0), (3, 0), (1, 1), (2, -1)])

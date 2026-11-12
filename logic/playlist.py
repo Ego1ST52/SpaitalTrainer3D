@@ -11,7 +11,8 @@ import random
 from logic.adaptive import AdaptiveLevel
 from logic.session import TrainingSession
 
-MODE_ORDER = ["rotation", "matching", "projection", "construction"]
+MODE_ORDER = ["rotation", "matching", "projection", "construction",
+              "nets", "sections", "count", "memory", "shadow"]
 PER_MODE_OPTIONS = (3, 5, 10)
 ORDERS = ("blocks", "mixed")
 

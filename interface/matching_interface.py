@@ -111,7 +111,8 @@ class MatchingGameScreen(BaseScreen):
         self.answered = True
         seconds = perf_counter() - self.task_started
         correct = check_answer(self.task, index)
-        points = self.session.record(correct, seconds)
+        points = self.session.record(correct, seconds,
+                                     self.task.tags + self.task.answer_tags(index))
         self.top_bar.flash_level(self.session)   # «Уровень повышен» и т.п.
 
         right = self.task.correct_index

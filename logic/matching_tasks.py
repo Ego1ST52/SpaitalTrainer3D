@@ -22,6 +22,7 @@ class MatchingTask:
     reference: tuple      # образец
     options: tuple        # варианты (каждый - набор клеток)
     correct_index: int
+    kinds: tuple = ()     # что за вариант: 'correct', 'mirror' или 'changed'
 
     @property
     def correct_option(self):
@@ -30,6 +31,19 @@ class MatchingTask:
     @property
     def question(self):
         return "Какая из фигур совпадает с образцом после поворота?"
+
+    @property
+    def tags(self):
+        tags = [f"cubes:{len(self.reference)}"]
+        if "mirror" in self.kinds:
+            tags.append("has_mirror")
+        return tuple(tags)
+
+    def answer_tags(self, chosen_index):
+        """Если ответ неверный - какой вариант выбрали: зеркальный или изменённый."""
+        if chosen_index == self.correct_index or not self.kinds:
+            return ()
+        return (f"chose:{self.kinds[chosen_index]}",)
 
 
 class MatchingTaskGenerator:
@@ -55,10 +69,14 @@ class MatchingTaskGenerator:
         self._last = key
 
         correct = self._rotated_copy(reference)
-        options = [correct] + [self._rotated_copy(s) for s in wrong]
-        self._rng.shuffle(options)
-        return MatchingTask(level, reference, tuple(options),
-                            options.index(correct))
+        mirrored = canonical(mirror(reference))
+        pairs = [(correct, "correct")] + [
+            (self._rotated_copy(s), "mirror" if canonical(s) == mirrored else "changed")
+            for s in wrong]
+        self._rng.shuffle(pairs)
+        options = [cells for cells, _ in pairs]
+        kinds = tuple(kind for _, kind in pairs)
+        return MatchingTask(level, reference, tuple(options), kinds.index("correct"), kinds)
 
     def _distractors(self, reference, needed):
         """Неправильные варианты: зеркало (если оно отличается) и перестановки."""

@@ -120,7 +120,7 @@ def test_code_format_and_tolerant_input():
     assert parse_code("314821") == ("projection", "easy", 4821)
 
 
-@pytest.mark.parametrize("bad", ["", "12-34", "51-0000", "14-0000", "ab-cdef", "31-48211"])
+@pytest.mark.parametrize("bad", ["", "12-34", "01-0000", "14-0000", "ab-cdef", "31-48211"])
 def test_bad_codes_rejected(bad):
     with pytest.raises(ValueError):
         parse_code(bad)
@@ -136,4 +136,5 @@ def test_same_code_gives_same_tasks(generator_class):
 
 
 def test_code_session_lengths_cover_all_modes():
-    assert set(CODE_LENGTH) == {"rotation", "matching", "projection", "construction"}
+    from logic.training_code import MODE_DIGITS
+    assert set(CODE_LENGTH) == set(MODE_DIGITS)

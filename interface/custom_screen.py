@@ -9,10 +9,12 @@ from interface.base_screen import BaseScreen
 from interface.ui_kit import FRONT, label, mode_color, Panel, Segmented, UIButton
 from logic.playlist import MODE_ORDER, Playlist, build_steps, validate_plan
 
-SHORT_NAMES = {"rotation": "Вращение", "matching": "Фигуры",
-               "projection": "Проекции", "construction": "Сборка"}
+SHORT_NAMES = {"rotation": "Вращение", "matching": "Фигуры", "projection": "Проекции",
+               "construction": "Сборка", "nets": "Развёртка", "sections": "Сечения",
+               "count": "Кубики", "memory": "Память", "shadow": "Тень"}
 # Примерно секунд на одно задание - для оценки длительности
-SECONDS_PER_TASK = {"rotation": 15, "matching": 20, "projection": 20, "construction": 60}
+SECONDS_PER_TASK = {"rotation": 15, "matching": 20, "projection": 20, "construction": 60,
+                    "nets": 20, "sections": 25, "count": 15, "memory": 70, "shadow": 20}
 
 LABEL_X = -0.8
 CONTROL_X = -0.2
@@ -61,19 +63,19 @@ class CustomTrainingScreen(BaseScreen):
                           position=(right - 0.09, 0.42), scale=(0.18, 0.06),
                           variant="ghost"))
 
-        # Режимы: переключатели в два ряда, можно выбрать несколько
+        # Режимы: переключатели в три ряда, можно выбрать несколько
         y = 0.25
         self.own(label("Режимы", (LABEL_X, y), 0.9))
-        pad = 0.01
-        chip = (CONTROL_WIDTH - pad) / 2
+        pad, columns = 0.01, 3
+        chip = (CONTROL_WIDTH - pad * (columns - 1)) / columns
         for i, mode in enumerate(MODE_ORDER):
-            row, col = divmod(i, 2)
+            row, col = divmod(i, columns)
             x = CONTROL_X - CONTROL_WIDTH / 2 + chip / 2 + col * (chip + pad)
             button = self.own(UIButton(SHORT_NAMES[mode], lambda m=mode: self.toggle(m),
                                        position=(x, y - row * 0.072), scale=(chip, 0.062),
-                                       text_size=0.85, swatch=mode_color(mode)))
+                                       text_size=0.75, swatch=mode_color(mode)))
             self.mode_buttons[mode] = button
-        y -= 0.072
+        y -= 0.072 * 2
 
         rows = [
             ("Уровень", "level", [("easy", "Начальный"), ("medium", "Средний"),
@@ -133,9 +135,10 @@ class CustomTrainingScreen(BaseScreen):
         self._summary_text(tasks_text(total), (left, 0.205), 1.8, "strong")
         self._summary_text(minutes_text(seconds), (left, 0.14), 0.85, "muted")
         for i, mode in enumerate(modes):
-            y = 0.08 - i * 0.04
-            self._summary_bar(left + 0.006, y, 0.012, 0.022, mode_color(mode))
-            self._summary_text(f"{settings.MODE_NAMES[mode]}  -  {per_mode}", (left + 0.025, y),
+            column, row = divmod(i, 5)                  # больше пяти - во второй столбец
+            x, y = left + column * 0.27, 0.08 - row * 0.04
+            self._summary_bar(x + 0.006, y, 0.012, 0.022, mode_color(mode))
+            self._summary_text(f"{SHORT_NAMES[mode]}  -  {per_mode}", (x + 0.025, y),
                                0.85, "text")
 
         # Лента порядка: каждый прямоугольник - одно задание в цвете своего режима.

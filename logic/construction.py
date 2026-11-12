@@ -119,6 +119,10 @@ class ConstructionTask:
     def question(self):
         return f"Соберите такую же фигуру из {len(self.target)} кубиков"
 
+    @property
+    def tags(self):
+        return (f"cubes:{len(self.target)}",)
+
 
 class ConstructionTaskGenerator:
     def __init__(self, seed=None):

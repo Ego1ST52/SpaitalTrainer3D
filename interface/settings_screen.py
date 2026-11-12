@@ -31,11 +31,21 @@ SECTIONS = [
         ("Чувствительность мыши", "mouse_sensitivity",
          [("low", "Низкая"), ("medium", "Средняя"), ("high", "Высокая")]),
     ]),
+]
+
+# Правая колонка, под темой интерфейса
+RIGHT_X = 0.2
+RIGHT_CONTROL_X = 0.66
+RIGHT_WIDTH = 0.36
+RIGHT_SECTIONS = [
     ("Комфорт", [
         ("Анимации и фон", "reduce_motion",
-         [(False, "Полные"), (True, "Меньше движения")]),
+         [(False, "Полные"), (True, "Меньше")]),
+        ("Звук", "sound", [("off", "Выкл"), ("quiet", "Тихо"), ("loud", "Громко")]),
+        ("Стерео 3D (очки)", "stereo", [(False, "Выкл"), (True, "Красно-синие")]),
     ]),
 ]
+STEREO_NOTE = "Стерео включится после перезапуска игры"
 
 
 class SettingsScreen(BaseScreen):
@@ -59,24 +69,11 @@ class SettingsScreen(BaseScreen):
                           position=(right - 0.09, 0.42), scale=(0.18, 0.06),
                           variant="ghost"))
 
-        y = 0.3
-        for title, rows in SECTIONS:
-            self.own(label(title, (LABEL_X, y), 0.8, "accent"))
-            y -= 0.055
-            for caption, key, options in rows:
-                self.own(label(caption, (LABEL_X, y), 0.9))
-                if options is None:
-                    y = self._build_skin_picker(y)
-                    continue
-                self.own(Segmented(options, prefs.get(key),
-                                   lambda value, k=key: self.change(k, value),
-                                   position=(CONTROL_X, y), width=CONTROL_WIDTH,
-                                   text_size=0.8))
-                y -= 0.064
-            y -= 0.012
-
+        self._build_rows(SECTIONS, 0.3, LABEL_X, CONTROL_X, CONTROL_WIDTH)
         self._build_theme_block()
-        self.own(label("Так будет выглядеть куб", (0.48, -0.42), 0.8, "muted",
+        y = self._build_rows(RIGHT_SECTIONS, -0.0, RIGHT_X, RIGHT_CONTROL_X, RIGHT_WIDTH)
+        self.stereo_note = self.own(label("", (RIGHT_X, y + 0.025), 0.75, "muted"))
+        self.own(label("Так будет выглядеть куб", (0.3, -0.33), 0.8, "muted",
                        origin=(0, 0)))
         self._build_preview()
 
@@ -117,6 +114,23 @@ class SettingsScreen(BaseScreen):
         caption = (f"Сейчас: {current_name}" if current_name
                    else f"Сейчас: своя тема {current}")
         self.own(label(caption, (left, 0.055), 0.75, "text"))
+
+    def _build_rows(self, sections, y, label_x, control_x, width):
+        """Разделы с переключателями сверху вниз. Возвращает y под ними."""
+        for title, rows in sections:
+            self.own(label(title, (label_x, y), 0.8, "accent"))
+            y -= 0.055
+            for caption, key, options in rows:
+                self.own(label(caption, (label_x, y), 0.9))
+                if options is None:
+                    y = self._build_skin_picker(y)
+                    continue
+                self.own(Segmented(options, prefs.get(key),
+                                   lambda value, k=key: self.change(k, value),
+                                   position=(control_x, y), width=width, text_size=0.8))
+                y -= 0.064
+            y -= 0.012
+        return y
 
     def apply_typed_theme(self):
         try:
@@ -173,11 +187,13 @@ class SettingsScreen(BaseScreen):
             dispose(self.preview)
         self.preview = ColoredCube(skin=prefs.get("cube_skin"),
                                    marks=prefs.get("face_marks"),
-                                   position=(4.2, -1.55, 0), scale=2.1)
+                                   position=(5.0, -2.75, 0), scale=1.3)
         self.preview.rotation = (-22, 35, 0)
 
     def change(self, key, value):
         self.on_change(key, value)
+        if key == "stereo":
+            self.stereo_note.text = STEREO_NOTE
         if key in ("cube_skin", "face_marks"):
             angle = self.preview.rotation_y
             self._build_preview()

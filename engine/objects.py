@@ -30,8 +30,6 @@ class ColoredCube(Entity):
         "-Z": (Vec3(0, 0, -0.5), Vec3(0, 0, 0)),
     }
 
-    COLOR_NAMES = settings.FACE_COLOR_NAMES   # названия граней скина «Цвета»
-
     def __init__(self, skin="classic", marks=False, **kwargs):
         super().__init__(**kwargs)
         self.busy = False              # True, пока идёт анимация поворота

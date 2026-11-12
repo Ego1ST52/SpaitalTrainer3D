@@ -44,6 +44,10 @@ def project(cells, view):
         points = ((x, z) for x, y, z in cells)
     elif view == "right":
         points = ((z, y) for x, y, z in cells)
+    elif view == "left":      # стоим слева (на -x), вправо = -z
+        points = ((-z, y) for x, y, z in cells)
+    elif view == "back":      # стоим сзади (на +z), вправо = -x
+        points = ((-x, y) for x, y, z in cells)
     else:
         raise ValueError(f"Неизвестный вид: {view!r}")
     return normalize2d(points)
@@ -72,19 +76,33 @@ class ProjectionTask:
         return self.options[self.correct_index]
 
     @property
+    def tags(self):
+        return (f"view:{self.view}", f"cubes:{len(self.shape)}")
+
+    def answer_tags(self, chosen_index):
+        return ()
+
+    @property
     def question(self):
         return f"Как выглядит фигура {VIEWS[self.view]}?"
 
 
 class ProjectionTaskGenerator:
+    # Наследник (режим «Тень») подставляет свои уровни, виды и класс задания
+    LEVELS = PROJECTION_LEVELS
+    OTHER_VIEWS = tuple(VIEWS)            # из каких видов брать неверные варианты
+
+    def make_task(self, *args):
+        return ProjectionTask(*args)
+
     def __init__(self, seed=None):
         self._rng = random.Random(seed)
         self._last = None
 
     def generate(self, level):
-        if level not in PROJECTION_LEVELS:
+        if level not in self.LEVELS:
             raise ValueError(f"Неизвестный уровень: {level!r}")
-        config = PROJECTION_LEVELS[level]
+        config = self.LEVELS[level]
 
         while True:
             shape = random_shape(self._rng, self._rng.randint(*config["cubes"]))
@@ -99,12 +117,12 @@ class ProjectionTaskGenerator:
 
         options = [correct] + wrong
         self._rng.shuffle(options)
-        return ProjectionTask(level, shape, view, tuple(options), options.index(correct))
+        return self.make_task(level, shape, view, tuple(options), options.index(correct))
 
     def _distractors(self, shape, view, correct, needed):
         """Неверные, но правдоподобные картинки. Каждая точно отличается
         от правильной и от остальных. None, если набрать не удалось."""
-        candidates = [project(shape, other) for other in VIEWS if other != view]
+        candidates = [project(shape, other) for other in self.OTHER_VIEWS if other != view]
         candidates += [mirror2d(correct), rotate2d(correct),
                        rotate2d(rotate2d(correct))]
         for _ in range(10):

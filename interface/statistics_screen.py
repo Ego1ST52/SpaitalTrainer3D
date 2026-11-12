@@ -27,9 +27,11 @@ class StatisticsScreen(BaseScreen):
 
         self.own(label("Статистика", (left, 0.42), 2.0, "strong"))
         self.own(label("Ваши тренировки и общие показатели", (left, 0.365), 0.85, "muted"))
-        self.own(UIButton("Прогресс", lambda: self.navigate("progress"),
-                          position=(right - 0.32, 0.42), scale=(0.2, 0.06),
+        self.own(UIButton("Анализ ошибок", lambda: self.navigate("analysis"),
+                          position=(right - 0.55, 0.42), scale=(0.24, 0.06),
                           variant="primary"))
+        self.own(UIButton("Прогресс", lambda: self.navigate("progress"),
+                          position=(right - 0.3, 0.42), scale=(0.2, 0.06)))
         self.own(UIButton("В меню", lambda: self.navigate("menu"),
                           position=(right - 0.09, 0.42), scale=(0.18, 0.06),
                           variant="ghost"))

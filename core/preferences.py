@@ -17,6 +17,12 @@ def _validate_plan_dict(value):
     validate_plan(value)
 
 
+def _validate_seen(value):
+    """Список режимов, подсказку к которым игрок уже видел."""
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ValueError("Список просмотренных подсказок должен быть списком строк")
+
+
 def _validate_theme(value):
     """Тема: "" (стандартная) или цвет '#rrggbb'."""
     if value != "" and (not isinstance(value, str) or parse_color(value) != value):
@@ -32,12 +38,15 @@ OPTIONS = {
     "session_length": (5, 10, 15, 20),
     "mouse_sensitivity": ("low", "medium", "high"),
     "reduce_motion": (False, True),
+    "sound": ("off", "quiet", "loud"),
+    "stereo": (False, True),            # красно-синие очки; после перезапуска
 }
 
 # Сложные настройки (словари) проверяются функцией, а не списком значений
 VALIDATORS = {
     "custom_plan": _validate_plan_dict,   # последний набор из «Моей тренировки»
     "theme": _validate_theme,             # пользовательская тема
+    "seen_tutorials": _validate_seen,     # режимы, где уже показана подсказка
 }
 
 DEFAULTS = {
@@ -48,10 +57,13 @@ DEFAULTS = {
     "cube_skin": "classic",
     "daily_goal": 20,
     "theme": "",
+    "seen_tutorials": [],
     "face_marks": False,
     "session_length": 10,
     "mouse_sensitivity": "medium",
     "reduce_motion": False,
+    "sound": "quiet",
+    "stereo": False,
 }
 
 SENSITIVITY_FACTOR = {"low": 0.6, "medium": 1.0, "high": 1.6}
@@ -59,6 +71,7 @@ SENSITIVITY_FACTOR = {"low": 0.6, "medium": 1.0, "high": 1.6}
 
 class Preferences:
     def __init__(self, values=None):
+        self.saver = None       # функция (ключ, значение) -> сохранить в базе; см. main.py
         self._values = copy.deepcopy(DEFAULTS)
         if values:
             self.load(values)
@@ -76,6 +89,12 @@ class Preferences:
         elif value not in OPTIONS[key]:
             raise ValueError(f"Недопустимое значение {value!r} для {key!r}")
         self._values[key] = copy.deepcopy(value)
+
+    def save(self, key, value):
+        """Изменить настройку и сразу сохранить её (если задан saver)."""
+        self.set(key, value)
+        if self.saver is not None:
+            self.saver(key, value)
 
     def load(self, values):
         """Сбросить к значениям по умолчанию и взять из values всё допустимое.

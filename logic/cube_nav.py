@@ -18,7 +18,7 @@ FACE_CONTENT = {
     "right": "matching",
     "back": "projection",
     "left": "construction",
-    "top": "custom",
+    "top": "workshop",         # «Мастерская»: своя тренировка и новые режимы
     "bottom": "hub",           # профиль: статистика, настройки, игроки
 }
 CONTENT_FACE = {content: face for face, content in FACE_CONTENT.items()}
