@@ -13,8 +13,9 @@ LEVELS = [("easy", "Начальный"), ("medium", "Средний"), ("hard",
 MODES_ROW_1 = [("rotation", "Вращение"), ("matching", "Фигуры"), ("projection", "Проекции"),
                ("construction", "Сборка"), ("nets", "Развёртка")]
 MODES_ROW_2 = [("sections", "Сечения"), ("count", "Кубики"), ("memory", "Память"),
-               ("shadow", "Тень"), ("reverse", "Повороты"), ("symmetry", "Симметрия"),
-               ("views", "По видам")]
+               ("shadow", "Тень"), ("reverse", "Повороты")]
+MODES_ROW_3 = [("symmetry", "Симметрия"), ("views", "По видам"), ("changed", "Что изм."),
+               ("observer", "Взгляд"), ("blitz", "Блиц")]
 GOLD = "#fbbf24"
 
 
@@ -58,11 +59,14 @@ class DuelSetupScreen(BaseScreen):
         self.modes_2 = self.own(Segmented(MODES_ROW_2, None, self._mode,
                                           position=(0.05, 0.005), width=1.4, text_size=0.8))
         self.modes_2.clear()
-        self.own(label("Уровень", (left, -0.09), 0.9))
+        self.modes_3 = self.own(Segmented(MODES_ROW_3, None, self._mode,
+                                          position=(0.05, -0.06), width=1.4, text_size=0.8))
+        self.modes_3.clear()
+        self.own(label("Уровень", (left, -0.15), 0.9))
         self.level = self.own(Segmented(LEVELS, "easy", lambda _: None,
-                                        position=(0.05, -0.09), width=1.4))
-        self.error = self.own(label("", (0, -0.19), 0.9, "wrong", origin=(0, 0)))
-        self.own(UIButton("Начать дуэль", self.start, position=(0, -0.28), scale=(0.34, 0.07),
+                                        position=(0.05, -0.15), width=1.4))
+        self.error = self.own(label("", (0, -0.23), 0.9, "wrong", origin=(0, 0)))
+        self.own(UIButton("Начать дуэль", self.start, position=(0, -0.31), scale=(0.34, 0.07),
                           variant="primary"))
 
     def _changed(self, _):
@@ -70,7 +74,10 @@ class DuelSetupScreen(BaseScreen):
 
     def _mode(self, mode):
         self.mode = mode
-        (self.modes_2 if mode in dict(MODES_ROW_1) else self.modes_1).clear()
+        for row, switch in ((MODES_ROW_1, self.modes_1), (MODES_ROW_2, self.modes_2),
+                            (MODES_ROW_3, self.modes_3)):
+            if mode not in dict(row):
+                switch.clear()
 
     def start(self):
         if self.first.selected == self.second.selected:

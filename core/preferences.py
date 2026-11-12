@@ -9,6 +9,8 @@ import copy
 
 from logic.assessment import validate_assessment
 from logic.playlist import validate_plan
+from logic.resume import validate_resume
+from logic.review import validate_review
 from logic.theme import parse_color
 
 
@@ -29,8 +31,14 @@ def _validate_theme(value):
     if value != "" and (not isinstance(value, str) or parse_color(value) != value):
         raise ValueError(f"Неверный цвет темы: {value!r}")
 
+def _validate_course(value):
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError("Прогресс курса - целое число от 0")
+
+
 # Режимы-стройки: собирать дольше, чем выбирать ответ
 BUILD_MODES = ("construction", "memory", "symmetry", "views")
+BLITZ_TASKS = 30          # больше за минуту никто не решит
 
 # Для каждой настройки: допустимые значения (первое - по умолчанию не обязательно)
 OPTIONS = {
@@ -44,6 +52,7 @@ OPTIONS = {
     "reduce_motion": (False, True),
     "sound": ("off", "quiet", "loud"),
     "stereo": (False, True),            # красно-синие очки; после перезапуска
+    "speech": (False, True),            # читать задания вслух
 }
 
 # Сложные настройки (словари) проверяются функцией, а не списком значений
@@ -52,6 +61,9 @@ VALIDATORS = {
     "theme": _validate_theme,             # пользовательская тема
     "seen_tutorials": _validate_seen,     # режимы, где уже показана подсказка
     "assessment": validate_assessment,    # итоги входного и итогового теста
+    "resume": validate_resume,            # недоигранная тренировка (или None)
+    "review": validate_review,            # задания для «Повторить ошибки»
+    "course": _validate_course,           # сколько уроков «Пути новичка» пройдено
 }
 
 DEFAULTS = {
@@ -64,6 +76,10 @@ DEFAULTS = {
     "theme": "",
     "seen_tutorials": [],
     "assessment": {},
+    "resume": None,
+    "review": [],
+    "course": 0,
+    "speech": False,
     "face_marks": False,
     "session_length": 10,
     "mouse_sensitivity": "medium",
@@ -127,6 +143,8 @@ class Preferences:
 
     def session_length(self, mode):
         """Сколько заданий в тренировке. Сборка дольше - заданий вдвое меньше."""
+        if mode == "blitz":
+            return BLITZ_TASKS               # «Блиц» ограничен временем, а не числом
         length = self.get("session_length")
         return max(3, length // 2) if mode in BUILD_MODES else length
 

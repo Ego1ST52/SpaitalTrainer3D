@@ -13,7 +13,7 @@ from logic.session import TrainingSession
 
 MODE_ORDER = ["rotation", "matching", "projection", "construction",
               "nets", "sections", "count", "memory", "shadow",
-              "reverse", "symmetry", "views"]
+              "reverse", "symmetry", "views", "changed", "observer"]
 PER_MODE_OPTIONS = (3, 5, 10)
 ORDERS = ("blocks", "mixed")
 
@@ -75,6 +75,8 @@ class Playlist:
         self.sessions = []           # завершённые шаги (TrainingSession)
         self.seeds = {}              # режим -> зерно заданий (для теста: у всех одинаково)
         self.stage = None            # 'pre' / 'post' - это входной / итоговый тест
+        self.review = {}             # «Повторить ошибки»: режим -> сохранённые задания
+        self.lesson = None           # номер урока «Пути новичка» (или None)
 
     @property
     def current(self):

@@ -4,7 +4,7 @@ from ursina import *
 
 from engine.objects import dispose
 from interface.base_screen import BaseScreen
-from interface.progress_screen import MODES_ROW_1, MODES_ROW_2
+from interface.progress_screen import MODES_ROW_1, MODES_ROW_2, MODES_ROW_3
 from interface.ui_kit import label, Panel, Segmented, UIButton
 from logic.leaderboard import leaderboard
 
@@ -42,16 +42,20 @@ class RecordsScreen(BaseScreen):
                                            position=(0.42, 0.27), width=0.78,
                                            text_size=0.75, height=0.05))
         self.switch_2.clear()
-        self.own(Panel(1.62, 0.6, position=(0, -0.08)))
+        self.switch_3 = self.own(Segmented(MODES_ROW_3, None, self.set_mode,
+                                           position=(0.42, 0.215), width=0.78,
+                                           text_size=0.75, height=0.05))
+        self.switch_3.clear()
+        self.own(Panel(1.62, 0.56, position=(0, -0.11)))
         for title, x, origin in COLUMNS:
-            self.own(label(title, (x, 0.17), 0.8, "muted", origin=origin))
+            self.own(label(title, (x, 0.13), 0.8, "muted", origin=origin))
         self.set_mode(None)
 
     def set_mode(self, mode):
-        if mode in dict(MODES_ROW_1):
-            self.switch_2.clear()
-        else:
-            self.switch_1.clear()
+        for row, switch in ((MODES_ROW_1, self.switch_1), (MODES_ROW_2, self.switch_2),
+                            (MODES_ROW_3, self.switch_3)):
+            if mode not in dict(row):
+                switch.clear()
         for row in self.rows:
             dispose(row)
         self.rows = []
@@ -61,7 +65,7 @@ class RecordsScreen(BaseScreen):
                                    "muted", origin=(0, 0)))
             return
         for i, row in enumerate(table[:MAX_ROWS]):
-            y = 0.11 - i * 0.06
+            y = 0.075 - i * 0.055
             tone = GOLD if row.place == 1 else ("accent" if row.name == self.current_name
                                                 else "text")
             values = [str(row.place), row.name, str(row.best), f"{row.accuracy:.0f}%",

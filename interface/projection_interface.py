@@ -13,7 +13,8 @@ from interface.ui_kit import FRONT, label, mode_color, Panel, TopBar, UIButton
 from logic.answer_checker import check_answer
 from logic.projections import ProjectionTaskGenerator, VIEWS
 from interface.hint_control import HintMixin
-from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
+from interface.game_common import (LEVEL_KEYS, finish_label, finish_training, new_training,
+                                     task_source)
 
 LETTERS = "АБВГД"
 
@@ -68,7 +69,8 @@ class ProjectionGameScreen(HintMixin, BaseScreen):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
         self.playlist = playlist     # шаг «Моей тренировки» или None
         self.session, seed = new_training("projection", level, seed, locked, playlist)
-        self.generator = ProjectionTaskGenerator(seed=seed)
+        self.generator = task_source(self.session, lambda s: ProjectionTaskGenerator(seed=s),
+                                     seed)
 
     def _clear_task_objects(self):
         # Кнопки лежат внутри карточек и удаляются вместе с ними

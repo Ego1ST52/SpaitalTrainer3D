@@ -23,12 +23,15 @@ from interface.ui_kit import (_draw_icon, Avatar, FRONT, label, LogoMark, mode_c
 from logic.cube_nav import CubeNavigator, FACE_CONTENT
 from logic.daily import daily_done, daily_task
 from logic.goals import tasks_on
+from logic.resume import describe
+from logic.review import due_items
 
 LEVELS = [("easy", "Начальный"), ("medium", "Средний"), ("hard", "Продвинутый")]
 
 # Кнопки на грани «Мастерская»: (режим, подпись). Режим появляется здесь,
 # только когда он готов - пустых кнопок нет.
 WORKSHOP = [
+    ("course", "Путь новичка"),
     ("custom", "Моя тренировка"),
     ("nets", "Развёртка"),
     ("sections", "Сечения"),
@@ -38,6 +41,9 @@ WORKSHOP = [
     ("reverse", "Найди повороты"),
     ("symmetry", "Симметрия"),
     ("views", "По трём видам"),
+    ("changed", "Что изменилось?"),
+    ("observer", "Взгляд наблюдателя"),
+    ("blitz", "Блиц (60 с)"),
     ("duel", "Игра вдвоём"),
 ]
 
@@ -176,20 +182,20 @@ class MainMenu(BaseScreen):
     def _build_workshop(self, content, half, accent):
         """Верхняя грань «Мастерская»: кнопки новых режимов и своей тренировки."""
         label("05", (-half + 0.02, half - 0.035), 0.9, accent, parent=content)
-        label("Мастерская", (0, 0.135), 1.3, "strong", origin=(0, 0), parent=content)
-        label("своя тренировка и новые режимы", (0, 0.1), 0.7, "muted", origin=(0, 0),
+        label("Мастерская", (0, 0.145), 1.3, "strong", origin=(0, 0), parent=content)
+        label("курс, своя тренировка и новые режимы", (0, 0.11), 0.7, "muted", origin=(0, 0),
               parent=content)
         # Кнопки в два столбца: в один столбец все режимы на грань не помещаются
         rows = (len(WORKSHOP) + 1) // 2
         for i, (mode, text) in enumerate(WORKSHOP):
             column, row = divmod(i, rows)
             button = UIButton(text, lambda m=mode: self._workshop_action(m), parent=content,
-                              position=(-0.091 + column * 0.182, 0.055 - row * 0.045, FRONT),
-                              scale=(0.176, 0.036), text_size=0.55, swatch=mode_color(mode),
+                              position=(-0.091 + column * 0.182, 0.07 - row * 0.033, FRONT),
+                              scale=(0.176, 0.029), text_size=0.5, swatch=mode_color(mode),
                               swatch_size=0.013)
             button.text_entity.x = 0.05          # текст чуть правее цветного квадрата
             button.face_name = "top"
-            button.text_entity.world_scale = Vec3(content.world_scale_x * 0.55)
+            button.text_entity.world_scale = Vec3(content.world_scale_x * 0.5)
 
     def _workshop_action(self, mode):
         # Кнопки работают, только когда «Мастерская» перед игроком
@@ -213,6 +219,7 @@ class MainMenu(BaseScreen):
                             lambda: self.navigate("profiles"),
                             position=(right - 0.16, 0.42)))
         self._build_goal(right - 0.31)
+        self._build_continue(left)
 
         # Стрелки вокруг куба (символ › повёрнут в нужную сторону)
         for direction, position, angle in (("left", (-0.34, 0.04), 180),
@@ -242,6 +249,27 @@ class MainMenu(BaseScreen):
                        (right, -0.4), 0.7, "muted", origin=(0.5, 0)))
         self.own(UIButton("Выход", application.quit, variant="ghost",
                           position=(right - 0.06, -0.445), scale=(0.11, 0.05), text_size=0.8))
+
+    def _build_continue(self, left):
+        """Слева вверху: «Продолжить тренировку» и «Повторить ошибки» - только
+        если есть что продолжать и что повторять."""
+        y = 0.345
+        resume = prefs.get("resume")
+        if resume and resume.get("mode") in settings.MODE_NAMES:
+            self.own(UIButton("Продолжить тренировку", lambda: self._menu_action("resume"),
+                              position=(left + 0.15, y), scale=(0.3, 0.05), text_size=0.75,
+                              variant="primary"))
+            self.own(label(describe(resume, settings.MODE_NAMES), (left + 0.005, y - 0.04),
+                           0.65, "muted"))
+            y -= 0.1
+        due = len(due_items(prefs.get("review")))
+        if due:
+            self.own(UIButton(f"Повторить ошибки: {due}", lambda: self._menu_action("review"),
+                              position=(left + 0.15, y), scale=(0.3, 0.05), text_size=0.75))
+
+    def _menu_action(self, screen):
+        if self.dialog is None and not self.entering:
+            self.navigate(screen)
 
     def _build_goal(self, left):
         """Цель дня под плашкой игрока: полоска и серия дней."""
@@ -381,8 +409,8 @@ class MainMenu(BaseScreen):
         if self.dialog is not None:
             return
         # «Моя тренировка» - сначала экран-конструктор, остальные режимы сразу
-        if mode == "custom":
-            self.navigate("custom")
+        if mode in ("custom", "course"):
+            self.navigate(mode)
         elif mode == "duel":
             self.navigate("duel_setup")
         else:

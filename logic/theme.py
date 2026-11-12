@@ -36,9 +36,9 @@ PRESETS = [
 
 MODES = ["rotation", "matching", "projection", "construction", "custom", "workshop",
          "nets", "sections", "count", "memory", "shadow", "duel",
-         "reverse", "symmetry", "views"]
+         "reverse", "symmetry", "views", "changed", "observer", "blitz", "course"]
 # Сдвиг оттенка каждого режима по цветовому кругу (градусы)
-MODE_HUE_SHIFTS = [0, 40, -40, 80, -80, -100, 120, -120, 150, -150, 180, 60, 20, -60, 100]
+MODE_HUE_SHIFTS = [0, 40, -40, 80, -80, -100, 120, -120, 150, -150, 180, 60, 20, -60, 100, -170, 165, 30, -20]
 
 # Какие цвета интерфейса меняет тема (имена как в core/settings.py)
 THEME_KEYS = [

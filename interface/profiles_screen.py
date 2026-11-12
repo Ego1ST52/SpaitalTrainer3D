@@ -54,6 +54,9 @@ class ProfilesScreen(BaseScreen):
         if on_report is not None:
             self.own(UIButton("Отчёт для учителя", self.make_report,
                               position=(right - 0.33, 0.42), scale=(0.26, 0.06)))
+            # Задание для класса: код с ограничением по времени и общая таблица
+            self.own(UIButton("Задание для класса", lambda: self.navigate("class_task"),
+                              position=(right - 0.62, 0.42), scale=(0.28, 0.06)))
 
         if users is None:
             self.own(label("Не удалось прочитать данные из базы.", (0, 0.1), 1.0,

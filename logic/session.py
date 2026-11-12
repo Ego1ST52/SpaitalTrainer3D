@@ -37,6 +37,9 @@ class TrainingSession:
         self.locked = locked    # True - тренировка по чужому коду
         self.results = []
         self.level_change = None   # 'up' / 'down' после последнего ответа
+        self.seed = None           # зерно заданий (см. logic/task_source.py)
+        self.deadline = None       # время окончания (time.time()) для тренировок на время
+        self.on_record = None      # функция(session) после каждого ответа - автосохранение
 
     @property
     def current_level(self):
@@ -57,6 +60,8 @@ class TrainingSession:
             tags = tuple(tags) + ("hint",)
         self.results.append(TaskResult(bool(correct), seconds, points, level, tuple(tags)))
         self.level_change = self.adaptive.record(correct) if self.adaptive else None
+        if self.on_record is not None:
+            self.on_record(self)
         return points
 
     @property

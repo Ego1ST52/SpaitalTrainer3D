@@ -141,4 +141,4 @@ def test_two_digit_mode_codes_round_trip(mode):
 def test_old_codes_still_work():
     assert parse_code("31-4821") == ("projection", "easy", 4821)
     with pytest.raises(ValueError):
-        parse_code("131-4821")            # режима 13 нет
+        parse_code("191-4821")            # режима 19 нет

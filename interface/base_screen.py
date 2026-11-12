@@ -29,6 +29,12 @@ class BaseScreen(Entity):
         self._owned.append(obj)
         return obj
 
+    def spoken_text(self):
+        """Что прочитать вслух при озвучке: вопрос и пояснение под ним."""
+        parts = [getattr(self, name).text for name in ("question", "subtitle")
+                 if getattr(self, name, None) is not None]
+        return ". ".join(" ".join(p.split()) for p in parts if p)
+
     def navigate(self, name, **kwargs):
         # Небольшая задержка: нельзя удалять кнопку прямо во время её клика
         invoke(self.manager.go, name, delay=0.05, **kwargs)

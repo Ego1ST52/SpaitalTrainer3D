@@ -11,7 +11,8 @@ from logic.stl import export_stl
 from interface.ui_kit import label, mode_color, Panel, TopBar, UIButton
 from logic.construction import Build, ConstructionTaskGenerator, GRID_HALF, \
     build_diff, build_hint, check_build
-from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
+from interface.game_common import (LEVEL_KEYS, finish_label, finish_training, new_training,
+                                     task_source)
 
 
 PANEL_X = 0.62
@@ -94,7 +95,7 @@ class ConstructionGameScreen(BaseScreen):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
         self.playlist = playlist     # шаг «Моей тренировки» или None
         self.session, seed = new_training(self.MODE, level, seed, locked, playlist)
-        self.generator = self.make_generator(seed)
+        self.generator = task_source(self.session, self.make_generator, seed)
 
     # ---------- задания ----------
     def new_task(self):

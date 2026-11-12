@@ -11,9 +11,10 @@ from interface.ui_kit import FRONT, label, Panel, Segmented, UIButton
 MODES_ROW_1 = [(None, "Все"), ("rotation", "Вращение"), ("matching", "Фигуры"),
                ("projection", "Проекции"), ("construction", "Сборка"), ("nets", "Развёртка")]
 MODES_ROW_2 = [("sections", "Сечения"), ("count", "Кубики"), ("memory", "Память"),
-               ("shadow", "Тень"), ("reverse", "Повороты"), ("symmetry", "Симметрия"),
-               ("views", "Виды")]
-MODES = MODES_ROW_1 + MODES_ROW_2
+               ("shadow", "Тень"), ("reverse", "Повороты")]
+MODES_ROW_3 = [("symmetry", "Симметрия"), ("views", "Виды"), ("changed", "Что изм."),
+               ("observer", "Взгляд"), ("blitz", "Блиц")]
+MODES = MODES_ROW_1 + MODES_ROW_2 + MODES_ROW_3
 LEVELS = [(None, "Все"), ("easy", "Начальный"), ("medium", "Средний"),
           ("hard", "Продвинутый")]
 
@@ -62,6 +63,11 @@ class ProgressScreen(BaseScreen):
                                                 position=(-0.42, 0.18), width=0.78,
                                                 text_size=0.75, height=0.05))
         self.mode_switch_2.clear()
+        # Третий ряд режимов - справа, под выбором уровня
+        self.mode_switch_3 = self.own(Segmented(MODES_ROW_3, None, self.set_mode,
+                                                position=(0.42, 0.18), width=0.78,
+                                                text_size=0.75, height=0.05))
+        self.mode_switch_3.clear()
         self.own(label("Уровень", (0.03, 0.27), 0.8, "muted"))
         self.level_switch = self.own(Segmented(LEVELS, None, self.set_level,
                                                position=(0.42, 0.235), width=0.78,
@@ -72,12 +78,15 @@ class ProgressScreen(BaseScreen):
     # ---------- фильтры ----------
     def set_mode(self, mode):
         self.mode = mode
-        # Выбор в одном ряду снимает выделение в другом
-        if mode in dict(MODES_ROW_1):
-            self.mode_switch_2.clear()
-        else:
-            self.mode_switch.clear()
+        # Выбор в одном ряду снимает выделение в других
+        for row, switch in self._rows():
+            if mode not in dict(row):
+                switch.clear()
         self.refresh()
+
+    def _rows(self):
+        return ((MODES_ROW_1, self.mode_switch), (MODES_ROW_2, self.mode_switch_2),
+                (MODES_ROW_3, self.mode_switch_3))
 
     def set_level(self, level):
         self.level = level
@@ -86,7 +95,7 @@ class ProgressScreen(BaseScreen):
     def next_mode(self):
         keys = [key for key, _ in MODES]
         mode = keys[(keys.index(self.mode) + 1) % len(keys)]
-        switch = self.mode_switch if mode in dict(MODES_ROW_1) else self.mode_switch_2
+        switch = next(s for row, s in self._rows() if mode in dict(row))
         switch.select(mode)
 
     def next_level(self):

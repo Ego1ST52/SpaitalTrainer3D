@@ -9,6 +9,8 @@
 по горизонтали примерно от -0.89 до 0.89 на мониторе 16:9.
 """
 
+import time as wall_clock     # настоящие часы (а time из Ursina - это время кадра)
+
 from ursina import *
 from ursina.shaders import unlit_shader
 
@@ -331,6 +333,11 @@ class TopBar(Entity):
         self.points_text = label("0", (right - 0.36, 0.415), 1.3, self.accent, parent=self)
         UIButton("В меню", on_back, position=(right - 0.09, 0.43),
                  scale=(0.18, 0.055), variant="ghost", parent=self)
+        # Таймер для тренировок на время («Блиц», задание для класса)
+        self.on_back = on_back
+        self.session = None
+        self.timer_text = label("", (right - 0.5, 0.43), 1.4, self.accent, origin=(0, 0),
+                                parent=self)
 
         # Подсказка «Как играть»: кнопка «?» и автоматически при первом входе
         self.mode = mode
@@ -354,6 +361,11 @@ class TopBar(Entity):
 
     def update_state(self, session, answered):
         """session - текущая тренировка, answered - ответ на задание уже дан."""
+        self.session = session
+        key = (id(session), len(session.results))
+        if not answered and key != getattr(self, "_spoken", None):
+            self._spoken = key          # новое задание - прочитать условие (если включено)
+            invoke(self.read_aloud, delay=0.15)
         note = getattr(session, "note", "")
         level_name = settings.LEVEL_NAMES[session.current_level]
         self.level_text.text = f"{level_name} уровень  •  {note}" if note else             f"{level_name} уровень"
@@ -405,6 +417,34 @@ class TopBar(Entity):
             self.flash_left -= time.dt
             if self.flash_left <= 0:
                 self.flash_text.text = ""
+        self._update_timer()
+
+    def read_aloud(self, force=False):
+        """Прочитать условие задания вслух (core/speech.py)."""
+        screen = getattr(self.on_back, "__self__", None)
+        if self.is_empty() or screen is None or not hasattr(screen, "spoken_text"):
+            return
+        from core import speech
+        speech.speak(screen.spoken_text(), force=force)
+
+    def input(self, key):
+        if key == "v":                          # V - прочитать задание ещё раз
+            self.read_aloud(force=True)
+
+    def _update_timer(self):
+        """Обратный отсчёт; когда время вышло - тренировка заканчивается."""
+        session = self.session
+        deadline = getattr(session, "deadline", None)
+        if deadline is None or getattr(session, "timed_out", False):
+            return
+        left = max(0.0, deadline - wall_clock.time())
+        self.timer_text.text = f"{int(left) // 60}:{int(left) % 60:02d}"
+        self.timer_text.color = color.hex(settings.WRONG_COLOR if left < 10 else self.accent)
+        if left <= 0:
+            session.timed_out = True
+            from interface.game_common import time_up
+            # on_back - метод экрана (go_back), значит его __self__ - сам экран
+            time_up(self.on_back.__self__)
 
 
 def destroy_tree(entity):

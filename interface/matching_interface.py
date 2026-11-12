@@ -11,7 +11,8 @@ from interface.ui_kit import label, TopBar, UIButton
 from logic.matching_tasks import MatchingTaskGenerator
 from logic.answer_checker import check_answer
 from interface.hint_control import HintMixin
-from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
+from interface.game_common import (LEVEL_KEYS, finish_label, finish_training, new_training,
+                                     task_source)
 
 LETTERS = "АБВГД"
 
@@ -64,7 +65,8 @@ class MatchingGameScreen(HintMixin, BaseScreen):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
         self.playlist = playlist     # шаг «Моей тренировки» или None
         self.session, seed = new_training("matching", level, seed, locked, playlist)
-        self.generator = MatchingTaskGenerator(seed=seed)
+        self.generator = task_source(self.session, lambda s: MatchingTaskGenerator(seed=s),
+                                     seed)
 
     def _clear_task_objects(self):
         for obj in self.task_objects + self.option_buttons:

@@ -86,6 +86,10 @@ class DemoDirector(Entity):
         mode, _ = self.steps[self.index]
         self.manager.go(mode, level="easy")
         self.screen = self.manager.current
+        # Ответы демо - не ответы игрока: не сохраняем их для «Продолжить тренировку»
+        session = getattr(self.screen, "session", None)
+        if session is not None:
+            session.on_record = None
         self.banner_text.text = f"Демо {self.index + 1} из {len(self.steps)}  •  Esc - выход"
         invoke(self.answer, delay=THINK_SECONDS)
 
@@ -101,7 +105,7 @@ class DemoDirector(Entity):
         screen.choose(screen.task.correct_index)
         for method in ("show_solution", "look_from_view"):
             if hasattr(screen, method):
-                invoke(self._call, method, delay=0.7)
+                invoke(self._call, screen, method, delay=0.7)
                 break
         invoke(self.next_mode_if_alive, delay=self.steps[self.index][1])
 
@@ -126,9 +130,11 @@ class DemoDirector(Entity):
         screen.check()
         invoke(self.next_mode_if_alive, delay=self.steps[self.index][1])
 
-    def _call(self, method):
-        if self._alive():
-            getattr(self.screen, method)()
+    def _call(self, screen, method):
+        # Только для того экрана, на котором вызов задуман: если демо уже
+        # перешло к следующему режиму, вызов просто пропускается
+        if self._alive() and self.screen is screen:
+            getattr(screen, method)()
 
     def next_mode_if_alive(self):
         if not self._alive():

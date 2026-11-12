@@ -120,6 +120,25 @@ def manager(app):
     m.register("research", lambda: ResearchScreen(m, tests, turns, "готово"))
     m.register("research_empty", lambda: ResearchScreen(m, {}, None))
     m.register("demo_start", lambda: DemoStartScreen(m))
+    from interface.changed_interface import ChangedGameScreen
+    from interface.observer_interface import ObserverGameScreen
+    from interface.blitz_interface import BlitzGameScreen
+    from interface.course_screen import CourseScreen
+    from interface.class_screen import ClassTaskScreen
+    m.register("changed", lambda: ChangedGameScreen(m, "hard"))
+    m.register("observer", lambda: ObserverGameScreen(m, "hard"))
+    m.register("blitz", lambda: BlitzGameScreen(m, "medium"))
+    m.register("course", lambda: CourseScreen(m, 3, "урок пройден"))
+    class_tasks = [{"code": "11-0042", "mode": "rotation", "level": "easy", "minutes": 5,
+                    "created": "2026-11-12T09:00"}]
+    class_players = [("Аня", [{"code": "11-0042", "tasks_correct": 8, "tasks_total": 10,
+                               "points": 90, "total_seconds": 70,
+                               "played_at": "2026-11-12T10:00:00"}])]
+    m.register("class_task", lambda: ClassTaskScreen(
+        m, class_tasks, class_players, lambda *a: class_tasks, lambda code: "ok"))
+    m.register("class_task_empty", lambda: ClassTaskScreen(m, [], [], lambda *a: class_tasks,
+                                                           lambda code: "ok"))
+    m.register("results", lambda session: MainMenu(m))
     from interface.duel_screens import DuelPassScreen, DuelResultsScreen, DuelSetupScreen
     m.register("duel_setup", lambda: DuelSetupScreen(m, users, 1))
     m.register("duel_pass", lambda: DuelPassScreen(m, _duel(turns=1)))
@@ -137,7 +156,8 @@ def manager(app):
                                     "memory", "shadow", "analysis", "duel_setup",
                                     "duel_pass", "duel_results", "reverse", "symmetry",
                                     "views", "records", "research", "research_empty",
-                                    "demo_start"])
+                                    "demo_start", "changed", "observer", "blitz", "course",
+                                    "class_task", "class_task_empty"])
 def test_screen_leaves_nothing_behind(app, manager, screen):
     before = count_entities()
     manager.go(screen)
@@ -1025,3 +1045,58 @@ def test_demo_runs_through_modes_and_returns_to_menu(app, manager, monkeypatch):
         assert [r.correct for r in screen.session.results] == [True]
     assert isinstance(manager.current, MainMenu)
     assert count_entities() == before
+
+
+def test_observer_turn_shows_exactly_the_right_picture(app, manager):
+    """После ответа стол поворачивается, и башенки на экране (слева направо)
+    идут ровно как на правильной картинке - для всех сторон."""
+    from ursina import color as ucolor
+    from logic.observer import view_from
+    from interface.observer_interface import TURN_TO_VIEWER
+    manager.go("observer")
+    app.step()
+    screen = manager.current
+    seen_sides = set()
+    for _ in range(40):
+        task = screen.task
+        screen.choose(task.correct_index)
+        target = TURN_TO_VIEWER[task.side]
+        _wait(app, 15, lambda: abs(screen.scene.rotation_y - target) < 0.01)
+        assert abs(screen.scene.rotation_y - target) < 0.01, "стол не довернулся"
+        _wait(app, 0.1)
+        towers = [e for e in screen.scene.children
+                  if getattr(e, "tower_color", None) is not None]
+        # Картинка - порядок слева направо без перспективы: сравниваем по x в мире
+        on_screen = sorted(towers, key=lambda e: e.world_position.x)
+        expected = [hex_color for hex_color, _ in view_from(task.towers, task.side)]
+        assert [e.tower_color for e in on_screen] == expected, task.side
+        seen_sides.add(task.side)
+        if seen_sides >= {"back", "right", "left"}:
+            break
+        screen.next_task()
+    assert seen_sides >= {"back", "right", "left"}
+
+
+def test_changed_click_on_moved_cube(app, manager):
+    manager.go("changed")
+    app.step()
+    screen = manager.current
+    screen.choose(screen.task.added)               # до изменения ответить нельзя
+    assert not screen.answered
+    screen.change_now()
+    assert set(screen.blocks) == set(screen.task.after)
+    screen.choose(screen.task.added)
+    assert screen.session.results[-1].correct
+
+
+def test_blitz_ends_when_time_is_up(app, manager):
+    import time
+    manager.go("blitz")
+    app.step()
+    screen = manager.current
+    screen.choose(screen.task.correct_index)
+    _wait(app, 10, lambda: not screen.answered)        # следующее задание само
+    assert not screen.answered and screen.session.total == 1
+    screen.session.deadline = time.time() - 1
+    _wait(app, 10, lambda: manager.current is not screen)
+    assert manager.current is not screen and screen.session.length == 1

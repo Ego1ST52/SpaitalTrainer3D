@@ -13,7 +13,8 @@ from logic.cube_skins import (face_color, face_names, has_pips, option_text,
                               start_description)
 from logic.task_generator import RotationTaskGenerator
 from logic.answer_checker import check_answer
-from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
+from interface.game_common import (LEVEL_KEYS, finish_label, finish_training, new_training,
+                                     task_source)
 from interface.hint_control import HintMixin
 
 
@@ -94,7 +95,9 @@ class RotationGameScreen(HintMixin, BaseScreen):
         """Новая тренировка: свой код и генератор заданий с этим зерном."""
         self.playlist = playlist     # шаг «Моей тренировки» или None
         self.session, seed = new_training("rotation", level, seed, locked, playlist)
-        self.generator = RotationTaskGenerator(seed=seed, face_names=face_names(self.skin))
+        names = face_names(self.skin)
+        self.generator = task_source(
+            self.session, lambda s: RotationTaskGenerator(seed=s, face_names=names), seed)
 
     # ---------- задания ----------
     def _clear_task_objects(self):
@@ -132,6 +135,12 @@ class RotationGameScreen(HintMixin, BaseScreen):
         self.explanation_title.text = ""
         self.reset_hint()
         self._update_status()
+
+    def spoken_text(self):
+        """Для озвучки: вопрос и все повороты словами."""
+        turns = ", ".join(f"вокруг оси {axis.upper()} на {'плюс' if angle > 0 else 'минус'} "
+                          f"{abs(angle)} градусов" for axis, angle in self.task.moves)
+        return f"Повороты: {turns}. {self.question.text}"
 
     def next_task(self):
         if self.playing or self.cube.busy or not self.answered:

@@ -19,7 +19,9 @@ from logic.playlist import MODE_ORDER
 CHART_TRAININGS = 15       # сколько последних тренировок на графике
 
 STYLE = """
-body { font-family: "Segoe UI", Arial, sans-serif; color: #1e293b; max-width: 960px;
+:root { color-scheme: light; }      /* отчёт всегда светлый: так его удобно печатать */
+html { background: #ffffff; }
+body { background: #ffffff; font-family: "Segoe UI", Arial, sans-serif; color: #1e293b; max-width: 960px;
        margin: 32px auto; padding: 0 16px; line-height: 1.45; }
 h1 { margin-bottom: 0; } .muted { color: #64748b; }
 h2 { border-bottom: 2px solid #22d3ee; padding-bottom: 4px; margin-top: 40px; }
@@ -31,6 +33,9 @@ td.num, th.num { text-align: right; }
 .card { flex: 1 1 160px; background: #f8fafc; border: 1px solid #e2e8f0;
         border-radius: 8px; padding: 10px 14px; }
 .card b { display: block; font-size: 24px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: #475569; }
+.key i { display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+         margin-right: 6px; vertical-align: -1px; }
 .good { color: #16a34a; } .bad { color: #dc2626; }
 @media print { h2 { break-after: avoid; } section { break-inside: avoid; } }
 """
@@ -65,7 +70,13 @@ def accuracy_chart(history):
         parts.append(f'<text x="{x + bar / 2:.1f}" y="{height + 16}" font-size="11" '
                      f'text-anchor="middle" fill="#64748b">{value:.0f}</text>')
     parts.append("</svg>")
-    return "".join(parts)
+    # Подписи цветов: какой цвет - какой режим (только режимы с графика)
+    modes = [m for m in MODE_ORDER if any(g["mode"] == m for g in games)]
+    legend = "".join(
+        f'<span class="key"><i style="background:{settings.MODE_COLORS[m][0]}"></i>'
+        f"{escape(settings.MODE_NAMES[m])}</span>" for m in modes)
+    return "".join(parts) + f'<p class="legend">{legend}</p>'
+
 
 
 def _modes_table(history):

@@ -11,14 +11,16 @@ import random
 
 MODE_DIGITS = {"rotation": 1, "matching": 2, "projection": 3, "construction": 4,
                "nets": 5, "sections": 6, "count": 7, "memory": 8, "shadow": 9,
-               "reverse": 10, "symmetry": 11, "views": 12}
+               "reverse": 10, "symmetry": 11, "views": 12, "changed": 13, "observer": 14,
+               "blitz": 15}
 LEVEL_DIGITS = {"easy": 1, "medium": 2, "hard": 3}
 MAX_SEED = 9999
 
 # В тренировке по коду число заданий фиксировано, чтобы у всех было поровну
 CODE_LENGTH = {"rotation": 10, "matching": 10, "projection": 10, "construction": 5,
                "nets": 10, "sections": 10, "count": 10, "memory": 5, "shadow": 10,
-               "reverse": 10, "symmetry": 5, "views": 5}
+               "reverse": 10, "symmetry": 5, "views": 5, "changed": 10, "observer": 10,
+               "blitz": 30}
 
 _MODE_BY_DIGIT = {d: m for m, d in MODE_DIGITS.items()}
 _LEVEL_BY_DIGIT = {d: l for l, d in LEVEL_DIGITS.items()}
@@ -44,7 +46,7 @@ def _parse_digits(digits):
     if not digits:
         raise ValueError("Введите код тренировки.")
     if not digits.isdigit() or len(digits) not in (6, 7):
-        raise ValueError("Код - это 6 цифр, например 31-4821 (у режимов 10-12 - 7 цифр).")
+        raise ValueError("Код - это 6 цифр, например 31-4821 (у режимов 10-15 - 7 цифр).")
     mode_part = digits[:len(digits) - 5]          # 1 или 2 цифры номера режима
     mode = _MODE_BY_DIGIT.get(int(mode_part))
     level = _LEVEL_BY_DIGIT.get(int(digits[-5]))

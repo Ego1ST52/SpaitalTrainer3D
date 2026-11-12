@@ -42,6 +42,15 @@ from logic.assessment import STAGE_NAMES, summarize_test
 from interface.records_screen import RecordsScreen
 from interface.research_screen import ResearchScreen
 from interface.demo import DemoDirector, DemoStartScreen
+from interface.changed_interface import ChangedGameScreen
+from interface.observer_interface import ObserverGameScreen
+from interface.blitz_interface import BlitzGameScreen
+from interface.class_screen import ClassTaskScreen
+from interface.course_screen import CourseScreen
+from logic.class_tasks import add_assignment, limits, make_assignment, results_for
+from logic.course import LESSONS, advance, lesson_passed
+from logic.playlist import MODE_ORDER, Playlist
+from logic.review import due_items, review_plan, update_review
 from interface import game_common
 from interface.duel_screens import DuelPassScreen, DuelResultsScreen, DuelSetupScreen
 
@@ -110,6 +119,18 @@ if db is not None:
         start_with_last_user()
     except sqlite3.Error as error:
         print("Не удалось загрузить игрока:", error)
+
+def load_class_tasks():
+    """Задания для класса (общие для всех игроков на этом компьютере)."""
+    if db is None:
+        return []
+    try:
+        return db.get_state("class_tasks", []) or []
+    except sqlite3.Error:
+        return []
+
+
+game_common.class_limits = limits(load_class_tasks())
 
 rig = CameraRig()
 backdrop = Backdrop()   # фон-свечение позади всех объектов
@@ -347,6 +368,114 @@ def open_views(level="easy", seed=None, locked=False, playlist=None):
     return ThreeViewsGameScreen(manager, level, seed, locked, playlist)
 
 
+def open_changed(level="easy", seed=None, locked=False, playlist=None):
+    # Камеру можно вращать: фигуру разрешено осмотреть со всех сторон
+    rig.view((2.2, 0, -14), 20)
+    return ChangedGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_observer(level="easy", seed=None, locked=False, playlist=None):
+    # Камера закреплена: «вы» - это камера, человечек стоит у другого края
+    rig.view((1.7, 0, -19.5), 30, interactive=False)
+    return ObserverGameScreen(manager, level, seed, locked, playlist)
+
+
+def open_blitz(level="easy", seed=None, locked=False, playlist=None):
+    rig.view((0, 0, -14), 18, interactive=False)
+    return BlitzGameScreen(manager, level, seed, locked, playlist)
+
+
+# ---------- повторение, продолжение, курс, класс ----------
+def record_review(sessions):
+    """Задания с ошибками - в список «Повторить ошибки»; верные ответы при
+    повторении продвигают задания по коробкам (logic/review.py)."""
+    items = prefs.get("review")
+    for session in sessions:
+        source = getattr(session, "source", None)
+        if source is None or not session.results:
+            continue
+        outcomes = list(zip(source.keys, [r.correct for r in session.results]))
+        items = update_review(items, session.mode, outcomes,
+                              reviewing=bool(getattr(session, "review_items", None)))
+    save_preference("review", items)
+
+
+def open_review():
+    """Тренировка из заданий, которые пора повторить."""
+    steps, groups = review_plan(due_items(prefs.get("review")), MODE_ORDER)
+    if not steps:
+        return open_menu()
+    playlist = Playlist(steps, "medium", adaptive=False)
+    playlist.review = groups
+    return mode_openers()[steps[0][0]](playlist=playlist)
+
+
+def open_resume():
+    """Продолжить недоигранную тренировку с того же задания."""
+    data = prefs.get("resume")
+    if not data or data["mode"] not in mode_openers():
+        return open_menu()
+    game_common.pending_resume = data
+    return mode_openers()[data["mode"]](data["level"], data["seed"], data.get("locked", False))
+
+
+def open_course(message=""):
+    menu_view()
+    return CourseScreen(manager, prefs.get("course"), message)
+
+
+def open_lesson_results(playlist):
+    save_and_check_achievements(playlist.merged_by_mode())
+    record_review(playlist.sessions)
+    lesson = LESSONS[playlist.lesson]
+    save_preference("course", advance(prefs.get("course"), playlist))
+    if lesson_passed(playlist):
+        message = f"Урок «{lesson.title}» пройден: точность {playlist.accuracy:.0f}%"
+    else:
+        message = (f"Урок «{lesson.title}» не пройден: {playlist.accuracy:.0f}% "
+                   f"(нужно {lesson.goal}%). Попробуйте ещё раз")
+    return open_course(message)
+
+
+def create_class_task(mode, level, minutes):
+    """Новое задание для класса - в базу; возвращает список заданий."""
+    tasks = add_assignment(load_class_tasks(), make_assignment(mode, level, minutes))
+    if db is not None:
+        try:
+            db.set_state("class_tasks", tasks)
+        except sqlite3.Error as error:
+            print("Не удалось сохранить задание:", error)
+    game_common.class_limits = limits(tasks)
+    return tasks
+
+
+def all_players():
+    """[(имя, история)] всех игроков на этом компьютере."""
+    if db is None:
+        return []
+    try:
+        return [(u["name"], db.get_history(u["id"])) for u in db.list_users()]
+    except sqlite3.Error:
+        return []
+
+
+def export_class_task(code):
+    rows = results_for(code, all_players())
+    if not rows:
+        return "По этому коду ещё никто не решал."
+    try:
+        path = write_csv(rows, report_path().with_name(f"класс_{code}.csv"))
+    except OSError as error:
+        return f"Не удалось сохранить: {error}"
+    return f"Сохранено: Документы › SpatialTrainer3D › {path.name}"
+
+
+def open_class_task():
+    menu_view()
+    return ClassTaskScreen(manager, load_class_tasks(), all_players(), create_class_task,
+                           export_class_task)
+
+
 # ---------- игра вдвоём ----------
 def mode_openers():
     """Режим -> функция, открывающая его экран (нужно дуэли)."""
@@ -354,7 +483,8 @@ def mode_openers():
             "projection": open_projection, "construction": open_construction,
             "nets": open_nets, "sections": open_sections, "count": open_count,
             "memory": open_memory, "shadow": open_shadow, "reverse": open_reverse,
-            "symmetry": open_symmetry, "views": open_views}
+            "symmetry": open_symmetry, "views": open_views, "changed": open_changed,
+            "observer": open_observer, "blitz": open_blitz}
 
 
 def open_duel_setup():
@@ -377,6 +507,7 @@ def open_duel_turn(session):
     """Ход окончен: сохранить результат игрока и передать ход (или итоги)."""
     duel = session.duel
     save_and_check_achievements([session])
+    record_review([session])
     duel.finish_turn(session)
     menu_view()
     if not duel.is_done:
@@ -397,12 +528,14 @@ def open_custom_results(playlist):
     """Итоги «Моей тренировки». В базу пишем по одной записи на режим, чтобы
     статистика и прогресс по режимам оставались честными."""
     saved, achievements = save_and_check_achievements(playlist.merged_by_mode())
+    record_review(playlist.sessions)
     menu_view()
     return CustomResultsScreen(manager, playlist, saved, achievements)
 
 
 def open_results(session):
     saved, achievements = save_and_check_achievements([session])
+    record_review([session])
     menu_view()
     return ResultsScreen(manager, session, saved, achievements)
 
@@ -438,6 +571,7 @@ def open_test_results(playlist):
     """Тест пройден: задания - в базу (как обычные тренировки), итоги - в
     настройки игрока, чтобы потом сравнить входной и итоговый тест."""
     save_and_check_achievements(playlist.merged_by_mode())
+    record_review(playlist.sessions)
     summary = summarize_test(playlist)
     results = prefs.get("assessment")
     results[playlist.stage] = summary
@@ -497,6 +631,14 @@ manager.register("records", open_records)
 manager.register("research", open_research)
 manager.register("test_results", open_test_results)
 manager.register("demo", open_demo)
+manager.register("changed", open_changed)
+manager.register("observer", open_observer)
+manager.register("blitz", open_blitz)
+manager.register("review", open_review)
+manager.register("resume", open_resume)
+manager.register("course", open_course)
+manager.register("lesson_results", open_lesson_results)
+manager.register("class_task", open_class_task)
 manager.register("progress", open_progress)
 
 manager.go("menu")

@@ -13,7 +13,8 @@ from ursina import *
 from core import settings
 from engine.objects import dispose
 from interface.base_screen import BaseScreen
-from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
+from interface.game_common import (LEVEL_KEYS, finish_label, finish_training, new_training,
+                                     task_source)
 from interface.hint_control import HintMixin
 from interface.ui_kit import label, mode_color, Panel, TopBar, UIButton
 from logic.answer_checker import check_answer
@@ -93,7 +94,7 @@ class ChoiceGameScreen(HintMixin, BaseScreen):
     def _start(self, level, seed=None, locked=False, playlist=None):
         self.playlist = playlist
         self.session, seed = new_training(self.MODE, level, seed, locked, playlist)
-        self.generator = self.make_generator(seed)
+        self.generator = task_source(self.session, self.make_generator, seed)
 
     def _clear_task_objects(self):
         for obj in self.task_objects:
