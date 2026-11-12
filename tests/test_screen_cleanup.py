@@ -754,3 +754,21 @@ def test_stereo_setting_warns_about_restart(app, manager):
     finally:
         screen.close()
         prefs.load({})
+
+
+def test_workshop_button_text_keeps_size_on_hover(app, manager):
+    """Под курсором кнопка на грани куба меняет цвет, но не размер текста."""
+    from interface.ui_kit import UIButton
+    from ursina import Vec3
+
+    menu, calls = _fresh_menu(manager, app)
+    menu.go_to("top")
+    buttons = [e for e in scene.entities
+               if isinstance(e, UIButton) and getattr(e, "face_name", None) == "top"]
+    assert buttons
+    for button in buttons:
+        before = Vec3(button.text_entity.world_scale)
+        button.on_mouse_enter()
+        assert (button.text_entity.world_scale - before).length() < 1e-4
+        button.on_mouse_exit()
+        assert (button.text_entity.world_scale - before).length() < 1e-4

@@ -125,6 +125,23 @@ class UIButton(Button):
                    scale=(size / width, size / height),
                    color=color.hex(swatch), shader=unlit_shader)
 
+    # При наведении Ursina заново задаёт размер текста «в мировых единицах».
+    # Если кнопка лежит на увеличенном 3D-объекте (грань куба-меню), текст
+    # от этого раздувается. Поэтому сохраняем его размер: под курсором
+    # меняется только цвет.
+    def on_mouse_enter(self):
+        self._keep_text_size(super().on_mouse_enter)
+
+    def on_mouse_exit(self):
+        self._keep_text_size(super().on_mouse_exit)
+
+    def _keep_text_size(self, handler):
+        text = self.text_entity
+        scale = text.scale if text else None
+        handler()
+        if text and scale is not None:
+            text.scale = scale
+
     def set_variant(self, variant):
         fill, hover, text_color = self.variants()[variant]
         self.variant = variant
