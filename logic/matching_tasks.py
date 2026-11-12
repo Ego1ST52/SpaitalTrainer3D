@@ -3,9 +3,9 @@
 import random
 from dataclasses import dataclass
 
-from logic.rotations import all_orientations
+from logic.rotations import all_orientations, shortest_moves
 from logic.shapes import (random_shape, modify_shape, mirror,
-                          canonical, rotate_shape)
+                          canonical, normalize, rotate_shape)
 
 MATCHING_LEVELS = {
     "easy":   {"cubes": (4, 4), "options": 3},
@@ -14,6 +14,14 @@ MATCHING_LEVELS = {
 }
 
 _ROTATIONS = sorted(all_orientations())
+
+KIND_CAPTIONS = {"correct": "та же фигура", "mirror": "зеркальная копия",
+                 "changed": "другая фигура"}
+KIND_EXPLANATIONS = {
+    "mirror": "Это зеркальная копия образца: её можно получить только отражением, "
+              "поворотом - никогда.",
+    "changed": "В этой фигуре один кубик стоит в другом месте - это другая фигура.",
+}
 
 
 @dataclass(frozen=True)
@@ -38,6 +46,25 @@ class MatchingTask:
         if "mirror" in self.kinds:
             tags.append("has_mirror")
         return tuple(tags)
+
+    @property
+    def solution_moves(self):
+        """Самая короткая цепочка поворотов, которая ставит правильный вариант
+        точно как образец. У симметричной фигуры таких поворотов несколько
+        (а может, вариант уже стоит как образец - тогда поворачивать не нужно)."""
+        target = normalize(self.reference)
+        fits = [m for m in _ROTATIONS if rotate_shape(self.correct_option, m) == target]
+        return min((shortest_moves(m) for m in fits), key=len)
+
+    def option_caption(self, index):
+        """Подпись под вариантом после ответа."""
+        return KIND_CAPTIONS.get(self.kinds[index] if self.kinds else "", "")
+
+    def explain(self, chosen_index):
+        """Почему выбранный вариант неверен (или None для верного)."""
+        if chosen_index == self.correct_index or not self.kinds:
+            return None
+        return KIND_EXPLANATIONS.get(self.kinds[chosen_index])
 
     def answer_tags(self, chosen_index):
         """Если ответ неверный - какой вариант выбрали: зеркальный или изменённый."""

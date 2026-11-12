@@ -28,6 +28,13 @@ PROJECTION_LEVELS = {
 }
 
 
+KIND_EXPLANATIONS = {
+    "mirror": "Сторона верная, но картинка отражена слева направо.",
+    "rotated": "Сторона верная, но картинка повёрнута.",
+    "changed": "Так выглядела бы другая фигура: один кубик в ней переставлен.",
+}
+
+
 def normalize2d(points):
     """Сдвинуть картинку в угол (минимумы = 0) и отсортировать клетки."""
     points = list(points)
@@ -70,6 +77,9 @@ class ProjectionTask:
     view: str             # 'front', 'top' или 'right'
     options: tuple        # варианты - картинки (наборы клеток столбец, строка)
     correct_index: int
+    # Откуда взялся каждый вариант: 'correct', 'view:top' (вид с другой стороны),
+    # 'mirror' (отражён), 'rotated' (повёрнут) или 'changed' (другая фигура)
+    kinds: tuple = ()
 
     @property
     def correct_option(self):
@@ -79,8 +89,25 @@ class ProjectionTask:
     def tags(self):
         return (f"view:{self.view}", f"cubes:{len(self.shape)}")
 
+    def _kind(self, index):
+        return self.kinds[index] if self.kinds else ""
+
     def answer_tags(self, chosen_index):
+        """Типичная ошибка, которую выдаёт выбранный неверный вариант."""
+        kind = self._kind(chosen_index)
+        if kind.startswith("view:"):
+            return ("chose:other_view",)
+        if kind in ("mirror", "rotated"):
+            return (f"chose:{kind}_view",)      # не путать с «зеркальной фигурой»
         return ()
+
+    def explain(self, chosen_index):
+        """Почему выбранная картинка неверна (None - верна или объяснить нечем)."""
+        kind = self._kind(chosen_index)
+        if kind.startswith("view:"):
+            other = kind[5:]
+            return f"Это вид {VIEWS.get(other, other)}, а нужен вид {VIEWS[self.view]}."
+        return KIND_EXPLANATIONS.get(kind)
 
     @property
     def question(self):
@@ -115,26 +142,32 @@ class ProjectionTaskGenerator:
                 break
         self._last = (shape, view)
 
-        options = [correct] + wrong
-        self._rng.shuffle(options)
-        return self.make_task(level, shape, view, tuple(options), options.index(correct))
+        pairs = [(correct, "correct")] + wrong
+        self._rng.shuffle(pairs)
+        options = tuple(picture for picture, _ in pairs)
+        kinds = tuple(kind for _, kind in pairs)
+        return self.make_task(level, shape, view, options, kinds.index("correct"), kinds)
 
     def _distractors(self, shape, view, correct, needed):
-        """Неверные, но правдоподобные картинки. Каждая точно отличается
-        от правильной и от остальных. None, если набрать не удалось."""
-        candidates = [project(shape, other) for other in self.OTHER_VIEWS if other != view]
-        candidates += [mirror2d(correct), rotate2d(correct),
-                       rotate2d(rotate2d(correct))]
+        """Неверные, но правдоподобные картинки [(картинка, откуда взялась)].
+        Каждая точно отличается от правильной и от остальных.
+        None, если набрать не удалось."""
+        candidates = [(project(shape, other), f"view:{other}")
+                      for other in self.OTHER_VIEWS if other != view]
+        candidates += [(mirror2d(correct), "mirror"), (rotate2d(correct), "rotated"),
+                       (rotate2d(rotate2d(correct)), "rotated")]
         for _ in range(10):
             changed = modify_shape(self._rng, shape)
             if changed is not None:
-                candidates.append(project(normalize(changed), view))
+                candidates.append((project(normalize(changed), view), "changed"))
         self._rng.shuffle(candidates)
 
         result = []
-        for picture in candidates:
-            if picture != correct and picture not in result:
-                result.append(picture)
+        pictures = {correct}
+        for picture, kind in candidates:
+            if picture not in pictures:
+                pictures.add(picture)
+                result.append((picture, kind))
             if len(result) == needed:
                 return result
         return None

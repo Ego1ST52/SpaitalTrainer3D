@@ -69,3 +69,31 @@ def test_no_same_task_twice_in_a_row():
 def test_unknown_level():
     with pytest.raises(ValueError):
         ProjectionTaskGenerator().generate("expert")
+
+
+@pytest.mark.parametrize("level", ["easy", "medium", "hard"])
+def test_wrong_pictures_know_where_they_came_from(level):
+    from logic.projections import mirror2d, rotate2d
+    gen = ProjectionTaskGenerator(seed=21)
+    for _ in range(60):
+        task = gen.generate(level)
+        assert task.kinds[task.correct_index] == "correct" and task.kinds.count("correct") == 1
+        right = task.correct_option
+        for picture, kind in zip(task.options, task.kinds):
+            if kind.startswith("view:"):
+                assert picture == project(task.shape, kind[5:])
+            elif kind == "mirror":
+                assert picture == mirror2d(right)
+            elif kind == "rotated":
+                assert picture in (rotate2d(right), rotate2d(rotate2d(right)))
+        for i in range(len(task.options)):
+            if i == task.correct_index:
+                assert task.explain(i) is None and task.answer_tags(i) == ()
+            else:
+                assert task.explain(i)
+
+
+def test_projection_mistake_tags_do_not_clash_with_matching():
+    from logic.insights import MISTAKES
+    assert MISTAKES["chose:mirror"][0] == "matching"
+    assert MISTAKES["chose:mirror_view"][0] == "projection"

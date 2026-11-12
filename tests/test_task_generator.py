@@ -11,7 +11,7 @@ def test_correct_answer_matches_math(level):
     gen = RotationTaskGenerator(seed=1)
     for _ in range(100):
         task = gen.generate(level)
-        expected = top_color(apply_sequence(IDENTITY, task.moves))
+        expected = top_color(apply_sequence(IDENTITY, task.moves), target=task.target)
         assert task.correct_option == expected
 
 
@@ -65,3 +65,40 @@ def test_check_answer_rejects_bad_input(bad):
     task = RotationTaskGenerator(seed=7).generate("easy")
     with pytest.raises(ValueError):
         check_answer(task, bad)
+
+def test_easy_asks_only_top_and_hard_asks_all_sides():
+    from logic.task_generator import TARGET_WORDS
+    easy = {RotationTaskGenerator(seed=s).generate("easy").target for s in range(40)}
+    hard = {RotationTaskGenerator(seed=s).generate("hard").target for s in range(80)}
+    assert easy == {"+Y"}
+    assert hard == set(TARGET_WORDS)
+    task = RotationTaskGenerator(seed=4).generate("hard")
+    assert task.question.endswith(f"окажется {task.target_word}?")
+
+
+@pytest.mark.parametrize("level", list(LEVELS))
+def test_wrong_options_are_explained_by_real_mistakes(level):
+    from logic.task_generator import MISTAKE_TEXTS, mistaken_moves
+    gen = RotationTaskGenerator(seed=6)
+    for _ in range(100):
+        task = gen.generate(level)
+        assert task.kinds[task.correct_index] == "correct"
+        assert task.kinds.count("correct") == 1
+        wrong = mistaken_moves(task.moves)
+        for index, kind in enumerate(task.kinds):
+            if kind in MISTAKE_TEXTS:
+                # вариант действительно получается при этой ошибке
+                orientation = apply_sequence(IDENTITY, wrong[kind])
+                assert task.options[index] == top_color(orientation, target=task.target)
+                assert task.answer_tags(index) == (f"chose:{kind}",)
+                assert MISTAKE_TEXTS[kind] in task.explain(index)
+            else:
+                assert task.answer_tags(index) == ()
+                assert task.explain(index) is None
+
+
+def test_most_tasks_offer_a_typical_mistake():
+    gen = RotationTaskGenerator(seed=8)
+    tasks = [gen.generate("medium") for _ in range(100)]
+    with_mistake = sum(any(k not in ("correct", "random") for k in t.kinds) for t in tasks)
+    assert with_mistake >= 90

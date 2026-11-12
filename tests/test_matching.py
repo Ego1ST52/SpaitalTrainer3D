@@ -95,3 +95,35 @@ def test_check_answer_works_with_matching_tasks():
 def test_unknown_level_raises():
     with pytest.raises(ValueError):
         MatchingTaskGenerator().generate("impossible")
+
+def test_solution_turns_correct_option_back_into_reference():
+    from logic.rotations import IDENTITY, apply_sequence
+    from logic.shapes import normalize, rotate_shape
+    gen = MatchingTaskGenerator(seed=11)
+    for level in ("easy", "medium", "hard"):
+        for _ in range(30):
+            task = gen.generate(level)
+            back = apply_sequence(IDENTITY, task.solution_moves)
+            assert rotate_shape(task.correct_option, back) == normalize(task.reference)
+
+
+def test_captions_and_explanations_follow_kinds():
+    gen = MatchingTaskGenerator(seed=12)
+    task = gen.generate("hard")
+    assert task.option_caption(task.correct_index) == "та же фигура"
+    assert task.explain(task.correct_index) is None
+    for i, kind in enumerate(task.kinds):
+        if kind == "mirror":
+            assert task.option_caption(i) == "зеркальная копия"
+            assert "зеркальная" in task.explain(i)
+        elif kind == "changed":
+            assert "другая фигура" in task.explain(i)
+
+
+def test_solution_is_shortest_and_empty_when_already_aligned():
+    from logic.matching_tasks import MatchingTask
+    from logic.rotations import rotate
+    square = ((0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0))          # квадрат 2x2
+    turned = rotate((((1, 0, 0), (0, 1, 0), (0, 0, 1))), "z", 90)
+    task = MatchingTask("easy", square, (rotate_shape(square, turned),), 0, ("correct",))
+    assert task.solution_moves == []          # квадрат после поворота на 90° - тот же

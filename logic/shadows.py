@@ -37,6 +37,12 @@ class ShadowTask(ProjectionTask):
     def tags(self):
         return (f"light:{self.view}", f"cubes:{len(self.shape)}")
 
+    def answer_tags(self, chosen_index):
+        return ()          # типичные ошибки «Тени» пока не разбираем
+
+    def explain(self, chosen_index):
+        return None
+
 
 class ShadowTaskGenerator(ProjectionTaskGenerator):
     LEVELS = SHADOW_LEVELS

@@ -53,7 +53,7 @@ def test_rotation_answers_follow_skin(skin):
     generator = RotationTaskGenerator(seed=11, face_names=names)
     for _ in range(30):
         task = generator.generate("hard")
-        top_face = face_at(apply_sequence(IDENTITY, task.moves), "+Y")
+        top_face = face_at(apply_sequence(IDENTITY, task.moves), task.target)
         assert task.correct_option == names[top_face]
         assert set(task.options) <= set(names.values())
 

@@ -772,3 +772,129 @@ def test_workshop_button_text_keeps_size_on_hover(app, manager):
         assert (button.text_entity.world_scale - before).length() < 1e-4
         button.on_mouse_exit()
         assert (button.text_entity.world_scale - before).length() < 1e-4
+
+
+def test_rotation_explains_typical_mistake(app, manager):
+    from logic.task_generator import MISTAKE_TEXTS
+
+    manager.go("rotation")
+    app.step()
+    screen = manager._current
+    for _ in range(30):                                  # ищем задание с типичной ошибкой
+        wrong = [i for i, k in enumerate(screen.task.kinds) if k in MISTAKE_TEXTS]
+        if wrong:
+            break
+        screen.answered = True
+        screen.new_task()
+    assert wrong
+    assert screen.question.text.endswith(f"{screen.task.target_word}?")
+    screen.choose(wrong[0])
+    text = screen.explanation.text.replace("\n", " ")
+    assert MISTAKE_TEXTS[screen.task.kinds[wrong[0]]] in text
+    assert screen.session.results[-1].tags[-1].startswith("chose:")
+    screen.new_task()
+    assert screen.explanation.text == ""
+
+
+def test_matching_solution_aligns_with_reference(app, manager):
+    """«Совместить с образцом»: правильный вариант поворачивается и его кубики
+    встают ровно как у образца (а не как у его зеркальной копии).
+    Проверяем задания, пока не встретятся повороты вокруг всех трёх осей."""
+    import time
+
+    manager.go("matching")
+    app.step()
+    screen = manager._current
+    seen_axes = set()
+    for _ in range(40):
+        moves = screen.task.solution_moves
+        if moves and not {a for a, _ in moves} <= seen_axes:
+            seen_axes |= {a for a, _ in moves}
+            wrong = (screen.task.correct_index + 1) % len(screen.task.options)
+            screen.choose(wrong)
+            captions = [e.text for e in screen.task_objects if isinstance(e, Text)]
+            assert "та же фигура" in captions and screen.solve_button.enabled
+            reference = screen.task_objects[0]
+            correct = screen.option_views[screen.task.correct_index]
+            assert correct.local_cells() != reference.local_cells()
+            screen.show_solution()
+            deadline = time.time() + 8
+            while screen.playing and time.time() < deadline:
+                app.step()
+            assert not screen.playing
+            assert correct.local_cells() == reference.local_cells(), moves
+        if seen_axes == {"x", "y", "z"}:
+            break
+        screen.answered = True
+        screen.new_task()
+    assert seen_axes == {"x", "y", "z"}
+
+
+def test_projection_look_button_shows_exact_view(app, manager):
+    """«Посмотреть сверху/спереди/справа»: после поворота силуэт кубиков на экране
+    совпадает с правильной картинкой (и не отражён зеркально)."""
+    import time
+    from engine.objects import ShapeView
+    from logic.projections import normalize2d, project
+
+    manager.go("projection")
+    app.step()
+    screen = manager._current
+    screen._start("medium")                       # там есть и вид справа
+    screen.new_task()
+    seen = set()
+    for _ in range(40):
+        view = screen.task.view
+        if view not in seen:
+            seen.add(view)
+            wrong = (screen.task.correct_index + 1) % len(screen.task.options)
+            screen.choose(wrong)
+            assert screen.explanation.text and screen.look_button.enabled
+            screen.look_from_view()
+            deadline = time.time() + 2
+            while time.time() < deadline:
+                app.step()
+            holder = screen.task_objects[0]
+            shape = next(c for c in holder.children if isinstance(c, ShapeView))
+            size = shape.world_scale_x
+            points = normalize2d(
+                (round((c.world_position.x - holder.world_x) / size * 2),
+                 round((c.world_position.y - holder.world_y) / size * 2)) for c in shape.cubes)
+            silhouette = tuple(sorted((x // 2, y // 2) for x, y in points))
+            assert silhouette == project(screen.task.shape, view), view
+        if seen == {"front", "top", "right"}:
+            break
+        screen.answered = True
+        screen.new_task()
+    assert seen == {"front", "top", "right"}
+
+
+def test_construction_wrong_build_shows_diff_and_cleans_up(app, manager):
+    from core import settings
+    from core.preferences import prefs
+    from logic.construction import build_diff
+
+    prefs.set("sound", "off")      # звук ошибки - временный объект, удаляется сам позже
+    before = count_entities()
+    manager.go("construction")
+    app.step()
+    screen = manager._current
+    for cell in [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0), (3, 0, 1), (3, 0, 2)]:
+        screen.build.add(cell)                       # ряд - заведомо не тот образец
+    screen._sync_blocks()
+    screen.check()
+    assert not screen.session.results[-1].correct
+    matched, extra, missing = build_diff(screen.build.cells, screen.task.target)
+    assert len(screen.diff_ghosts) == len(missing)
+    red = settings.WRONG_COLOR.lower()
+    for cell, block in screen.blocks.items():
+        face = block.faces[0]
+        shown = face.color.r / face.light            # цвет грани = цвет * яркость
+        assert (abs(shown - int(red[1:3], 16) / 255) < 0.02) == (cell in extra), cell
+    assert "Совпало" in screen.feedback.text
+    screen.new_task()
+    assert screen.diff_ghosts == []
+    manager.go("menu")
+    app.step()
+    prefs.load({})
+    assert count_entities() == before

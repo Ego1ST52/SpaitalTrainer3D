@@ -78,3 +78,11 @@ def test_invalid_input_raises():
             for m in all_orientations():
                 for face in ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]:
                     assert face_at(m, face_direction(m, face)) == face
+
+def test_shortest_moves_reach_every_orientation():
+    from logic.rotations import shortest_moves
+    for target in all_orientations():
+        moves = shortest_moves(target)
+        assert apply_sequence(IDENTITY, moves) == target
+        assert len(moves) <= 3
+    assert shortest_moves(IDENTITY) == []

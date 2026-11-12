@@ -45,10 +45,16 @@ class MatchingGameScreen(BaseScreen):
                        "R - исходный вид  •  клик по фигуре - ответ",
                        (window.top_left.x + 0.05, -0.455), 0.8, "muted"))
 
-        self.feedback = self.own(label("", (0, -0.4), 1.0, origin=(0, 0)))
+        self.feedback = self.own(label("", (0, -0.415), 1.0, origin=(0, 0)))
         self.next_button = self.own(UIButton("Дальше", self.next_task,
                                              position=(window.top_right.x - 0.15, -0.43),
                                              scale=(0.2, 0.06), variant="primary"))
+        # После ответа: правильная фигура поворачивается и встаёт как образец
+        self.solve_button = self.own(UIButton("Совместить с образцом", self.show_solution,
+                                              position=(window.top_right.x - 0.15, -0.355),
+                                              scale=(0.2, 0.05), text_size=0.7))
+        self.solve_button.enabled = False
+        self.playing = False
         self.new_task()
 
     def _start(self, level, seed=None, locked=False, playlist=None):
@@ -74,6 +80,8 @@ class MatchingGameScreen(BaseScreen):
     def new_task(self):
         self.task = self.generator.generate(self.session.current_level)
         self.answered = False
+        self.playing = False
+        self.solve_button.enabled = False
         self.hovered_index = None
         self.task_started = perf_counter()
         self.next_button.text = "Дальше"
@@ -98,7 +106,7 @@ class MatchingGameScreen(BaseScreen):
         self._update_status()
 
     def next_task(self):
-        if not self.answered:
+        if not self.answered or self.playing:
             return
         if self.session.is_finished:
             finish_training(self)
@@ -126,11 +134,32 @@ class MatchingGameScreen(BaseScreen):
         else:
             self.option_views[index].set_color(settings.WRONG_COLOR)
             self.option_buttons[index].set_variant("wrong")
-            self.feedback.text = f"Неверно. Правильный ответ: {LETTERS[right]}"
+            self.feedback.text = (f"Неверно, ответ {LETTERS[right]}.  "
+                                  f"{self.task.explain(index) or ''}").strip()
             self.feedback.color = color.hex(settings.WRONG_COLOR)
+        # Подписи под вариантами: что это за фигура на самом деле
+        for i, button in enumerate(self.option_buttons):
+            self.task_objects.append(label(self.task.option_caption(i),
+                                           (button.x, -0.378), 0.72, "muted", origin=(0, 0)))
+        self.solve_button.enabled = bool(self.task.solution_moves)
         if self.session.is_finished:
             self.next_button.text = finish_label(self)
         self._update_status()
+
+    def show_solution(self):
+        """Правильный вариант поворачивается по шагам и встаёт как образец."""
+        if not self.answered or self.playing:
+            return
+        self.playing = True
+        self.solve_button.enabled = False
+        self.rotator.reset()                 # все фигуры - в одном ракурсе
+        self.option_views[self.task.correct_index].play_moves(
+            self.task.solution_moves, on_done=self._solution_done)
+
+    def _solution_done(self):
+        self.playing = False
+        self.feedback.text = "Теперь правильная фигура стоит точно как образец"
+        self.feedback.color = color.hex(settings.CORRECT_COLOR)
 
     def _update_status(self):
         self.top_bar.update_state(self.session, self.answered)
@@ -153,6 +182,8 @@ class MatchingGameScreen(BaseScreen):
             self.hovered_index = index
 
     def go_back(self):
+        if self.playing:
+            return                            # не уходим посреди анимации
         self.navigate("menu")
 
     def close(self):

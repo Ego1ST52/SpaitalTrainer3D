@@ -9,7 +9,10 @@
 import random
 from dataclasses import dataclass
 
-from logic.shapes import random_shape, canonical, is_connected, NEIGHBORS
+from logic.rotations import all_orientations
+from logic.shapes import apply_matrix, random_shape, canonical, is_connected, NEIGHBORS
+
+_ROTATIONS = sorted(all_orientations())
 
 CONSTRUCTION_LEVELS = {
     "easy":   {"cubes": (3, 4)},
@@ -35,6 +38,39 @@ def check_build(build, target):
     if len(build) != len(target) or not is_connected(build):
         return False
     return canonical(build) == canonical(target)
+
+
+def _inside(cell):
+    x, y, z = cell
+    return abs(x) <= GRID_HALF and abs(z) <= GRID_HALF and 0 <= y < MAX_HEIGHT
+
+
+def best_placement(build, target):
+    """Как поставить образец (повернуть и сдвинуть), чтобы он как можно больше
+    совпал с постройкой. Возвращает множество клеток образца на площадке.
+    При равенстве лучше то положение, где образец целиком внутри площадки."""
+    build = set(build)
+    if not build:
+        return set()
+    best_key, best = None, None
+    for matrix in _ROTATIONS:
+        turned = [apply_matrix(matrix, cell) for cell in target]
+        # Сдвиги, при которых хотя бы один кубик образца совпадает с постройкой
+        shifts = {tuple(b[i] - t[i] for i in range(3)) for b in build for t in turned}
+        for shift in sorted(shifts):
+            placed = {tuple(t[i] + shift[i] for i in range(3)) for t in turned}
+            key = (len(placed & build), all(_inside(c) for c in placed))
+            if best_key is None or key > best_key:
+                best_key, best = key, placed
+    return best
+
+
+def build_diff(build, target):
+    """Чем постройка отличается от образца: (совпавшие, лишние, недостающие)
+    клетки - при лучшем совмещении образца с постройкой."""
+    build = set(build)
+    placed = best_placement(build, target)
+    return build & placed, build - placed, placed - build
 
 
 def build_hint(build, target):

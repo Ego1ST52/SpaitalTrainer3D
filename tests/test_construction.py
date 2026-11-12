@@ -93,3 +93,51 @@ def test_generator_levels(level):
 def test_unknown_level():
     with pytest.raises(ValueError):
         ConstructionTaskGenerator().generate("expert")
+
+
+def test_diff_of_correct_build_is_clean():
+    from logic.construction import build_diff
+    from logic.rotations import rotate
+    from logic.shapes import apply_matrix
+    target = ((0, 0, 0), (1, 0, 0), (1, 1, 0), (1, 1, 1))
+    turned = {apply_matrix(rotate(((1, 0, 0), (0, 1, 0), (0, 0, 1)), "y", 90), c) for c in target}
+    build = {(x + 1, y, z) for x, y, z in turned}
+    matched, extra, missing = build_diff(build, target)
+    assert matched == build and not extra and not missing
+
+
+def test_diff_finds_extra_and_missing_cube():
+    from logic.construction import build_diff
+    target = ((0, 0, 0), (1, 0, 0), (2, 0, 0), (2, 1, 0))          # «Г» из 4 кубиков
+    build = {(0, 0, 0), (1, 0, 0), (2, 0, 0), (0, 1, 0), (2, 0, 1)}  # 3 верных + 2 лишних
+    matched, extra, missing = build_diff(build, target)
+    assert len(matched) == 4 and extra == {(2, 0, 1)} and not missing
+    assert len(matched) + len(missing) == len(target)
+    assert extra == build - matched
+    # Достроив недостающее и убрав лишнее, получаем верную фигуру
+    fixed = (build - extra) | missing
+    assert check_build(fixed, target)
+
+
+def test_diff_prefers_placement_inside_the_grid():
+    from logic.construction import GRID_HALF, MAX_HEIGHT, build_diff
+    target = ((0, 0, 0), (0, 1, 0), (0, 2, 0))                       # столбик
+    build = {(0, 0, 0)}
+    matched, extra, missing = build_diff(build, target)
+    assert matched == build and not extra
+    assert all(0 <= y < MAX_HEIGHT and abs(x) <= GRID_HALF and abs(z) <= GRID_HALF
+               for x, y, z in missing)
+
+
+def test_diff_random_builds_always_fixable():
+    import random
+    from logic.construction import ConstructionTaskGenerator, build_diff
+    rng = random.Random(4)
+    gen = ConstructionTaskGenerator(seed=4)
+    for _ in range(40):
+        task = gen.generate("medium")
+        build = {(rng.randint(-1, 1), rng.randint(0, 1), rng.randint(-1, 1)) for _ in range(5)}
+        matched, extra, missing = build_diff(build, task.target)
+        assert matched | extra == build and not (matched & extra)
+        assert len(matched) + len(missing) == len(task.target)
+        assert check_build((build - extra) | missing, task.target)

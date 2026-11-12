@@ -1,3 +1,4 @@
+import textwrap
 from time import perf_counter
 
 from ursina import *
@@ -21,6 +22,10 @@ PANEL_X = 0.42               # центр правой панели с вари�
 CARD_SIZE = 0.2
 CARD_STEP = 0.24
 VIEW_LABEL_SCALE = 14        # размер подписей сторон в 3D-сцене
+# Поворот фигуры (наклон, разворот), при котором видна ровно эта сторона.
+# Проверено тестом: силуэт кубиков на экране совпадает с проекцией из logic.
+VIEW_ROTATIONS = {"front": (0, 0), "top": (-90, 0), "right": (0, 90)}
+TURN_SECONDS = 0.8
 
 
 class ProjectionGameScreen(BaseScreen):
@@ -45,10 +50,16 @@ class ProjectionGameScreen(BaseScreen):
         self.own(label("Правая кнопка мыши - повернуть фигуру  •  R - исходный вид",
                        (window.top_left.x + 0.05, -0.455), 0.8, "muted"))
 
-        self.feedback = self.own(label("", (PANEL_X, -0.37), 1.0, origin=(0, 0)))
+        self.feedback = self.own(label("", (PANEL_X, -0.355), 1.0, origin=(0, 0)))
+        self.explanation = self.own(label("", (PANEL_X, -0.395), 0.8, "text", origin=(0, 0)))
         self.next_button = self.own(UIButton("Дальше", self.next_task,
                                              position=(window.top_right.x - 0.15, -0.43),
                                              scale=(0.2, 0.06), variant="primary"))
+        # После ответа: повернуть фигуру ровно той стороной, о которой спрашивали
+        self.look_button = self.own(UIButton("", self.look_from_view,
+                                             position=(SHAPE_UI[0], -0.39),
+                                             scale=(0.3, 0.055), text_size=0.8))
+        self.look_button.enabled = False
         self.new_task()
 
     def _start(self, level, seed=None, locked=False, playlist=None):
@@ -134,6 +145,8 @@ class ProjectionGameScreen(BaseScreen):
 
         self.question.text = self.task.question
         self.feedback.text = ""
+        self.explanation.text = ""
+        self.look_button.enabled = False
         self._update_status()
 
     def next_task(self):
@@ -163,9 +176,23 @@ class ProjectionGameScreen(BaseScreen):
             self.option_buttons[index].set_variant("wrong")
             self.feedback.text = f"Неверно. Правильный ответ: {LETTERS[right]}"
             self.feedback.color = color.hex(settings.WRONG_COLOR)
+            self.explanation.text = textwrap.fill(self.task.explain(index) or "", 72)
+        self.look_button.text = f"Посмотреть {VIEWS[self.task.view]}"
+        self.look_button.enabled = True
         if self.session.is_finished:
             self.next_button.text = finish_label(self)
         self._update_status()
+
+    def look_from_view(self):
+        """Плавно повернуть фигуру так, чтобы была видна спрашиваемая сторона:
+        силуэт на экране совпадёт с правильной картинкой."""
+        if not self.answered or not self.task_objects:
+            return
+        pitch, yaw = VIEW_ROTATIONS[self.task.view]
+        holder = self.task_objects[0]
+        self.rotator.pitch, self.rotator.yaw = pitch, yaw   # мышь продолжит отсюда
+        holder.animate_rotation(Vec3(pitch, yaw, 0), duration=TURN_SECONDS,
+                                curve=curve.in_out_cubic)
 
     def _update_status(self):
         self.top_bar.update_state(self.session, self.answered)

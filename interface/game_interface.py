@@ -1,3 +1,4 @@
+import textwrap
 from time import perf_counter
 
 from ursina import *
@@ -72,8 +73,10 @@ class RotationGameScreen(BaseScreen):
 
         self.own(Panel(PANEL_WIDTH, 0.78, position=(PANEL_X, -0.06)))
         self.own(label("Повороты по порядку", (PANEL_LEFT, 0.29), 0.8, "muted"))
-        self.own(label("Какая грань окажется сверху?", (PANEL_LEFT, 0.02), 1.05,
-                       "strong"))
+        self.question = self.own(label("", (PANEL_LEFT, 0.02), 1.05, "strong"))
+        # Разбор ошибки: почему выбранный вариант неверен
+        self.explanation_title = self.own(label("", (left, 0.225), 0.8, "wrong"))
+        self.explanation = self.own(label("", (left, 0.205), 0.85, "text", origin=(-0.5, 0.5)))
         self.feedback = self.own(label("", (PANEL_LEFT, -0.365), 0.95))
 
         self.own(UIButton("Показать решение", self.show_solution,
@@ -121,7 +124,10 @@ class RotationGameScreen(BaseScreen):
                               swatch=self.name_to_hex.get(name))
             self.option_buttons.append(button)
 
+        self.question.text = f"Какая грань окажется {self.task.target_word}?"
         self.feedback.text = ""
+        self.explanation.text = ""
+        self.explanation_title.text = ""
         self._update_status()
 
     def next_task(self):
@@ -151,6 +157,11 @@ class RotationGameScreen(BaseScreen):
             self.option_buttons[index].set_variant("wrong")
             self.feedback.text = f"Неверно. Ответ: {option_text(self.skin, self.task.correct_option).lower()}"
             self.feedback.color = color.hex(settings.WRONG_COLOR)
+            reason = self.task.explain(index)
+            if reason:
+                self.explanation_title.text = "Разбор ошибки"
+                self.explanation.text = textwrap.fill(
+                    reason + " Нажмите «Показать решение», чтобы увидеть повороты.", 46)
         if self.session.is_finished:
             self.next_button.text = finish_label(self)
         self._update_status()

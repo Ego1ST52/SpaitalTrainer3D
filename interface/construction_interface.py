@@ -10,7 +10,7 @@ from interface.base_screen import BaseScreen
 from logic.stl import export_stl
 from interface.ui_kit import label, mode_color, Panel, TopBar, UIButton
 from logic.construction import Build, ConstructionTaskGenerator, GRID_HALF, \
-    build_hint, check_build
+    build_diff, build_hint, check_build
 from interface.game_common import LEVEL_KEYS, finish_label, finish_training, new_training
 
 
@@ -18,6 +18,8 @@ PANEL_X = 0.62
 PANEL_WIDTH = 0.44
 PANEL_LEFT = PANEL_X - PANEL_WIDTH / 2 + 0.03
 PREVIEW_Y = 0.14
+PREVIEW_BOX = 0.22                 # размер образца в панели (по большей стороне)
+PREVIEW_DRAG = 300                 # градусов поворота образца на ширину экрана
 REMOVE_HINT_COLOR = "#f87171"      # кубик под курсором при Shift (будет удалён)
 
 
@@ -37,6 +39,9 @@ class ConstructionGameScreen(BaseScreen):
         self.task_started = 0.0
         self.answered = False
         self.preview = None
+        self.preview_drag = None    # положение мыши, когда начали крутить образец
+        self.preview_touched = False
+        self.diff_ghosts = []       # прозрачные кубики «здесь не хватает»
 
         # Площадка: тёмная плита с сеткой. Коллайдер нужен, чтобы мышь «видела» пол.
         size = 2 * GRID_HALF + 1
@@ -56,6 +61,9 @@ class ConstructionGameScreen(BaseScreen):
         self.top_bar = self.own(TopBar(self.MODE, self.go_back))
         self.own(Panel(PANEL_WIDTH, 0.78, position=(PANEL_X, -0.06)))
         self.own(label("Образец", (PANEL_LEFT, 0.29), 0.8, "muted"))
+        self.preview_hint = self.own(label("потяните мышью, чтобы покрутить",
+                                           (PANEL_X + PANEL_WIDTH / 2 - 0.03, 0.29), 0.65,
+                                           "muted", origin=(0.5, 0)))
         self.question = self.own(label("", (PANEL_LEFT, 0.005), 0.95, "strong"))
         self.counter = self.own(label("", (PANEL_LEFT, -0.07), 0.8, "muted"))
 
@@ -95,6 +103,7 @@ class ConstructionGameScreen(BaseScreen):
         for block in self.blocks.values():
             dispose(block)
         self.blocks = {}
+        self._clear_diff()
 
         if self.preview:
             dispose(self.preview)
@@ -102,7 +111,9 @@ class ConstructionGameScreen(BaseScreen):
                      for i in range(3)) + 1
         self.preview = ShadedShape(self.task.target, self.accent,
                                    position=(PANEL_X, PREVIEW_Y, -0.3),
-                                   scale=min(0.055, 0.2 / extent), rotation_x=-25)
+                                   scale=min(0.06, PREVIEW_BOX / extent), rotation_x=-25)
+        self.preview_drag = None
+        self.preview_touched = False
 
         self.question.text = textwrap.fill(self.task.question, 28)
         self.feedback.text = ""
@@ -186,7 +197,24 @@ class ConstructionGameScreen(BaseScreen):
             self.ghost.enabled = False
 
         if self.preview:
-            self.preview.rotation_y += 25 * time.dt
+            self.preview_hint.enabled = self.preview.enabled   # в «По памяти» образец прячут
+            if self.preview_drag is not None:
+                # Крутим образец мышью: влево-вправо - вокруг вертикали, вверх-вниз - наклон
+                delta = Vec2(mouse.x, mouse.y) - self.preview_drag
+                self.preview_drag = Vec2(mouse.x, mouse.y)
+                self.preview.rotation_y -= delta.x * PREVIEW_DRAG
+                self.preview.rotation_x = clamp(self.preview.rotation_x - delta.y * PREVIEW_DRAG,
+                                                -80, 80)
+            elif not self.preview_touched:
+                self.preview.rotation_y += 25 * time.dt   # пока не трогали - вращается сам
+
+    def _mouse_over_preview(self):
+        """Курсор над образцом в правой панели."""
+        try:
+            x, y = mouse.x, mouse.y
+        except AttributeError:          # окно без мыши (автотесты)
+            return False
+        return abs(x - PANEL_X) < PANEL_WIDTH / 2 - 0.02 and abs(y - PREVIEW_Y) < 0.13
 
     def input(self, key):
         if key in LEVEL_KEYS and not self.session.locked:
@@ -194,6 +222,12 @@ class ConstructionGameScreen(BaseScreen):
             self.new_task()
         elif key == "z" and held_keys["control"]:     # Ctrl+Z
             self.undo()
+        elif key == "left mouse down" and self.preview and self.preview.enabled \
+                and self._mouse_over_preview():
+            self.preview_drag = Vec2(mouse.x, mouse.y)
+            self.preview_touched = True
+        elif key == "left mouse up":
+            self.preview_drag = None
         elif key == "left mouse down" and self.can_build():
             if held_keys["shift"]:
                 block = self._hovered_block()
@@ -239,6 +273,7 @@ class ConstructionGameScreen(BaseScreen):
             message = f"Верно! Фигура совпадает.  +{points} баллов"
         else:
             message = "Не совпадает. " + build_hint(self.build.cells, self.task.target)
+            message += " " + self._show_diff()
         # Длинную фразу переносим на несколько строк, чтобы влезла в панель
         self.feedback.text = textwrap.fill(message, 34)
         self.feedback.color = color.hex(result_color)
@@ -248,6 +283,30 @@ class ConstructionGameScreen(BaseScreen):
         self._refresh()
         self.stl_button.enabled = True
         self.on_checked(correct)
+
+    def _show_diff(self):
+        """Показать, чем постройка отличается от образца: совпавшие кубики -
+        зелёные, лишние - красные, недостающие - прозрачные зелёные."""
+        matched, extra, missing = build_diff(self.build.cells, self.task.target)
+        for cell, block in self.blocks.items():
+            block.set_color(settings.CORRECT_COLOR if cell in matched
+                            else settings.WRONG_COLOR)
+        good = color.hex(settings.CORRECT_COLOR)
+        for cell in sorted(missing):
+            self.diff_ghosts.append(Entity(model="cube", position=cell, scale=0.9,
+                                           color=color.rgba(good.r, good.g, good.b, 0.55),
+                                           shader=unlit_shader))
+        parts = [f"Совпало {len(matched)} из {len(self.task.target)}."]
+        if extra:
+            parts.append("Красные - лишние.")
+        if missing:
+            parts.append("Прозрачные - не хватает.")
+        return " ".join(parts)
+
+    def _clear_diff(self):
+        for ghost in self.diff_ghosts:
+            dispose(ghost)
+        self.diff_ghosts = []
 
     def next_task(self):
         if self.session.is_finished:
@@ -263,6 +322,7 @@ class ConstructionGameScreen(BaseScreen):
         for block in self.blocks.values():
             dispose(block)
         self.blocks = {}
+        self._clear_diff()
         if self.preview:
             dispose(self.preview)
             self.preview = None

@@ -133,6 +133,38 @@ class ShapeView(Entity):
         for cube in self.cubes:
             cube.color = color.hex(hex_color)
 
+    def play_moves(self, moves, on_done=None, pause=0.15):
+        """Повернуть фигуру (в её собственных осях) по цепочке поворотов
+        [(ось, угол), ...], как куб в режиме «Вращение»: следующий поворот -
+        после окончания предыдущего."""
+        moves = list(moves)
+        if not moves or self.is_empty():
+            if on_done and not self.is_empty():
+                on_done()
+            return
+        axis, angle = moves[0]
+        pivot = Entity(parent=self)                 # шарнир в центре фигуры
+        for cube in self.cubes:
+            cube.world_parent = pivot
+        visual_angle = angle * settings.AXIS_SIGN[axis]
+        pivot.animate(f"rotation_{axis}", visual_angle,
+                      duration=settings.ROTATION_DURATION, curve=curve.in_out_cubic)
+
+        def finish():
+            if self.is_empty() or pivot.is_empty():
+                return
+            setattr(pivot, f"rotation_{axis}", visual_angle)   # точный конечный угол
+            for cube in self.cubes:
+                cube.world_parent = self
+            destroy(pivot)
+            invoke(self.play_moves, moves[1:], on_done, pause, delay=pause)
+
+        invoke(finish, delay=settings.ROTATION_DURATION + 0.02)
+
+    def local_cells(self):
+        """Где сейчас стоят кубики (в осях фигуры, округлено) - для проверки."""
+        return sorted(tuple(round(v * 2) / 2 for v in cube.position) for cube in self.cubes)
+
     def contains(self, entity):
         """Принадлежит ли entity (например, кубик под курсором) этой фигуре."""
         return entity in self.cubes

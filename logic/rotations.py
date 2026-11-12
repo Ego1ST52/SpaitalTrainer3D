@@ -65,6 +65,27 @@ def apply_sequence(orientation, moves):
     return orientation
 
 
+def shortest_moves(target):
+    """Самая короткая цепочка поворотов [(ось, угол), ...], которая переводит
+    исходное положение в ориентацию target (не больше трёх поворотов)."""
+    if target == IDENTITY:
+        return []
+    paths = {IDENTITY: []}
+    queue = deque([IDENTITY])
+    while queue:
+        current = queue.popleft()
+        for axis in "xyz":
+            for angle in (90, -90, 180):
+                nxt = rotate(current, axis, angle)
+                if nxt in paths:
+                    continue
+                paths[nxt] = paths[current] + [(axis, angle)]
+                if nxt == target:
+                    return paths[nxt]
+                queue.append(nxt)
+    raise ValueError("Это не поворот куба")
+
+
 def all_orientations():
     """Все 24 ориентации куба (обход в ширину)."""
     found = {IDENTITY}
